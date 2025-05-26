@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Instant WASD Arrow</title>
+    <style>
+        body,
+        html {
+            height: 100%;
+            margin: 0;
+            font-size: 80px;
+            font-family: Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f0f0;
+            user-select: none;
+        }
+
+        .arrow {
+            /* No transition for instant update */
+        }
+    </style>
+</head>
+
+<body>
+    <div class="arrow" id="arrow">↑</div>
+
+    <script>
+        const arrow = document.getElementById('arrow');
+        const pressed = new Set();
+
+        const directionMap = {
+            'W': [0, -1],
+            'A': [-1, 0],
+            'S': [0, 1],
+            'D': [1, 0]
+        };
+
+        function updateDirection() {
+            let x = 0, y = 0;
+            pressed.forEach(key => {
+                const vec = directionMap[key];
+                if (vec) {
+                    x += vec[0];
+                    y += vec[1];
+                }
+            });
+
+            if (x === 0 && y === 0) return;
+            const angle = Math.atan2(y, x) * (180 / Math.PI) + 90;
+            arrow.style.transform = `rotate(${angle}deg)`;
+        }
+
+        document.addEventListener('keydown', e => {
+            const key = e.key.toUpperCase();
+            if (directionMap[key]) {
+                if (!pressed.has(key)) {
+                    pressed.add(key);
+                    updateDirection();
+                }
+            }
+        });
+
+        document.addEventListener('keyup', e => {
+            const key = e.key.toUpperCase();
+            if (pressed.has(key)) {
+                pressed.delete(key);
+                updateDirection();
+            }
+        });
+    </script>
+</body>
+
+</html>
