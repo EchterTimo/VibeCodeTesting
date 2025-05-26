@@ -537,10 +537,37 @@
             e.vx *= 0.98;
             e.vy *= 0.98;
 
-            if (e.x < 0) { e.x = 0; e.vx = 0; }
-            if (e.x > worldWidth) { e.x = worldWidth; e.vx = 0; }
-            if (e.y < 0) { e.y = 0; e.vy = 0; }
-            if (e.y > worldHeight) { e.y = worldHeight; e.vy = 0; }
+            // Wandkollision vermeiden: Wenn zu nah an der Wand, Kurs zur Kartenmitte setzen
+            let wallMargin = shipSize + 10;
+            let bounced = false;
+            if (e.x < wallMargin) {
+                e.x = wallMargin;
+                bounced = true;
+            }
+            if (e.x > worldWidth - wallMargin) {
+                e.x = worldWidth - wallMargin;
+                bounced = true;
+            }
+            if (e.y < wallMargin) {
+                e.y = wallMargin;
+                bounced = true;
+            }
+            if (e.y > worldHeight - wallMargin) {
+                e.y = worldHeight - wallMargin;
+                bounced = true;
+            }
+            if (bounced) {
+                // Kurs zur Kartenmitte setzen
+                const centerX = worldWidth / 2;
+                const centerY = worldHeight / 2;
+                const toCenter = Math.atan2(centerY - e.y, centerX - e.x);
+                e.angle += Math.sign(toCenter - e.angle) * Math.min(Math.abs(toCenter - e.angle), 0.1);
+                e.vx += Math.cos(toCenter) * 0.2;
+                e.vy += Math.sin(toCenter) * 0.2;
+                // Optional: Reset Angriff, damit sie nicht direkt wieder zur Wand fliegen
+                e.ai.patrolAngle = toCenter;
+                e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
+            }
 
             if (e.shootCooldown) e.shootCooldown--;
             if (e.shieldFlash > 0) e.shieldFlash--;
