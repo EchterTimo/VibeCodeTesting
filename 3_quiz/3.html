@@ -162,7 +162,7 @@
         }
 
         function loadQuestions() {
-            fetch('/3_quiz/questions.json')
+            fetch('questions.json')
                 .then(response => {
                     if (!response.ok) throw new Error('Network error while loading questions');
                     return response.json();
