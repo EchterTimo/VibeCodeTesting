@@ -815,21 +815,23 @@
 
             // Zielposition bestimmen
             let targetX, targetY;
+            let followPlayer = false;
+            let distToPlayer = Math.hypot(player.x - d.x, player.y - d.y);
+
             if (d.ai.targetEnemy) {
                 targetX = d.ai.targetEnemy.x;
                 targetY = d.ai.targetEnemy.y;
             } else {
                 // Folge dem Spieler, aber halte Abstand
-                const dx = player.x - d.x;
-                const dy = player.y - d.y;
-                const dist = Math.hypot(dx, dy);
-                if (dist > 80) {
+                if (distToPlayer > 80) {
                     targetX = player.x;
                     targetY = player.y;
+                    followPlayer = true;
                 } else {
                     // Bleib in der Nähe, aber nicht zu nah
                     targetX = d.x;
                     targetY = d.y;
+                    followPlayer = false;
                 }
             }
 
@@ -843,15 +845,51 @@
             d.angle += Math.sign(da) * Math.min(Math.abs(da), 0.05);
 
             // Geschwindigkeit
-            if (Math.hypot(dx, dy) > 40) {
-                d.vx += Math.cos(d.angle) * 0.09;
-                d.vy += Math.sin(d.angle) * 0.09;
+            if (d.ai.targetEnemy || followPlayer) {
+                if (Math.hypot(dx, dy) > 40) {
+                    d.vx += Math.cos(d.angle) * 0.09;
+                    d.vy += Math.sin(d.angle) * 0.09;
+                }
+            } else {
+                // Drohne bleibt stehen, wenn sie beim Spieler ist und kein Gegnerziel hat
+                d.vx *= 0.9;
+                d.vy *= 0.9;
             }
 
             // Schießen auf Gegner
             if (d.ai.targetEnemy && !d.ai.shootCooldown && Math.hypot(dx, dy) < 400) {
                 shoot(d);
                 d.ai.shootCooldown = friendlyDroneFireRate;
+            }
+
+            // NEU: Schießen auf Asteroiden, wenn kein Gegnerziel und beim Spieler
+            if (!d.ai.targetEnemy && distToPlayer <= 80 && !d.ai.shootCooldown) {
+                // Suche nächsten Asteroiden im Umkreis
+                let closestAst = null;
+                let closestAstDist = Infinity;
+                asteroids.forEach(a => {
+                    const adx = a.x - d.x;
+                    const ady = a.y - d.y;
+                    const adist = Math.hypot(adx, ady);
+                    if (adist < 350 && adist < closestAstDist) {
+                        closestAst = a;
+                        closestAstDist = adist;
+                    }
+                });
+                if (closestAst) {
+                    // Drehe zur Asteroidenrichtung
+                    const astAngle = Math.atan2(closestAst.y - d.y, closestAst.x - d.x);
+                    let da = astAngle - d.angle;
+                    while (da > Math.PI) da -= 2 * Math.PI;
+                    while (da < -Math.PI) da += 2 * Math.PI;
+                    d.angle += Math.sign(da) * Math.min(Math.abs(da), 0.05);
+
+                    // Schießen, wenn ungefähr ausgerichtet
+                    if (Math.abs(da) < 0.3) {
+                        shoot(d);
+                        d.ai.shootCooldown = friendlyDroneFireRate;
+                    }
+                }
             }
 
             // Cooldown
