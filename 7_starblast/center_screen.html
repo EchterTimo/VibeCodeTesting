@@ -232,7 +232,7 @@
         // Asteroiden-Konstanten
         const asteroidCount = 10;
         const asteroidMinSize = 30;
-        const asteroidMaxSize = 60;
+        const asteroidMaxSize = 200;
         const asteroidMinSpeed = 0.5;
         const asteroidMaxSpeed = 2;
 
@@ -340,38 +340,74 @@
 
         // Kollision Spieler <-> Asteroid
         function checkAsteroidCollisions() {
-            if (!player.alive) return;
-            asteroids.forEach(a => {
-                const dist = Math.hypot(player.x - a.x, player.y - a.y);
-                if (dist < shipSize + a.radius) {
-                    // Schaden von 50
-                    let damage = 50;
-                    if (player.shield > 0) {
-                        const shieldDamage = Math.min(player.shield, damage);
-                        player.shield -= shieldDamage;
-                        damage -= shieldDamage;
-                    }
-                    if (damage > 0) {
-                        player.hp -= damage;
-                    }
-                    player.shieldFlash = shieldDuration;
-                    player.lastDamageTime = Date.now();
+            if (player.alive) {
+                asteroids.forEach(a => {
+                    const dist = Math.hypot(player.x - a.x, player.y - a.y);
+                    if (dist < shipSize + a.radius) {
+                        // Schaden von 50
+                        let damage = 50;
+                        if (player.shield > 0) {
+                            const shieldDamage = Math.min(player.shield, damage);
+                            player.shield -= shieldDamage;
+                            damage -= shieldDamage;
+                        }
+                        if (damage > 0) {
+                            player.hp -= damage;
+                        }
+                        player.shieldFlash = shieldDuration;
+                        player.lastDamageTime = Date.now();
 
-                    // Asteroid an neue Position setzen
-                    const { x, y } = randomAsteroidPosition();
-                    a.x = x;
-                    a.y = y;
+                        // Asteroid an neue Position setzen
+                        const { x, y } = randomAsteroidPosition();
+                        a.x = x;
+                        a.y = y;
 
-                    // Spieler tot?
-                    if (player.hp <= 0) {
-                        player.alive = false;
-                        // Optional: Respawn nach kurzer Zeit
-                        setTimeout(() => {
-                            Object.assign(player, respawn());
-                            player.alive = true;
-                        }, 1500);
+                        // Spieler tot?
+                        if (player.hp <= 0) {
+                            player.alive = false;
+                            setTimeout(() => {
+                                Object.assign(player, respawn());
+                                player.alive = true;
+                            }, 1500);
+                        }
                     }
-                }
+                });
+            }
+
+            // NEU: Gegner-Kollisionen mit Asteroiden
+            enemies.forEach(e => {
+                if (!e.alive) return;
+                asteroids.forEach(a => {
+                    const dist = Math.hypot(e.x - a.x, e.y - a.y);
+                    if (dist < shipSize + a.radius) {
+                        // Schaden von 50
+                        let damage = 50;
+                        if (e.shield > 0) {
+                            const shieldDamage = Math.min(e.shield, damage);
+                            e.shield -= shieldDamage;
+                            damage -= shieldDamage;
+                        }
+                        if (damage > 0) {
+                            e.hp -= damage;
+                        }
+                        e.shieldFlash = shieldDuration;
+                        e.lastDamageTime = Date.now();
+
+                        // Asteroid an neue Position setzen
+                        const { x, y } = randomAsteroidPosition();
+                        a.x = x;
+                        a.y = y;
+
+                        // Gegner tot?
+                        if (e.hp <= 0) {
+                            e.alive = false;
+                            setTimeout(() => {
+                                Object.assign(e, respawn());
+                                e.alive = true;
+                            }, 1500);
+                        }
+                    }
+                });
             });
         }
 
