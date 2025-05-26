@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Starblast Clone</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            background: black;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="game"></canvas>
+    <script>
+        const canvas = document.getElementById("game");
+        const ctx = canvas.getContext("2d");
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            size: 20,
+            angle: 0,
+            speed: 3,
+            color: "cyan"
+        };
+
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let moving = false;
+
+        const bullets = [];
+        const enemies = [];
+
+        function spawnEnemy() {
+            // Spawn at random edge
+            const edge = Math.floor(Math.random() * 4);
+            let x, y;
+            switch (edge) {
+                case 0: x = 0; y = Math.random() * canvas.height; break;           // Left
+                case 1: x = canvas.width; y = Math.random() * canvas.height; break; // Right
+                case 2: x = Math.random() * canvas.width; y = 0; break;             // Top
+                case 3: x = Math.random() * canvas.width; y = canvas.height; break; // Bottom
+            }
+
+            const angle = Math.random() * Math.PI * 2;
+            enemies.push({
+                x,
+                y,
+                dx: Math.cos(angle) * 2,
+                dy: Math.sin(angle) * 2,
+                size: 20,
+                color: "red",
+                angle: angle
+            });
+        }
+
+        // Spawn initial 3 enemies
+        for (let i = 0; i < 3; i++) spawnEnemy();
+
+        canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+        canvas.addEventListener("mousedown", e => {
+            if (e.button === 2) {
+                moving = true;
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            }
+            if (e.button === 0) {
+                const angle = player.angle;
+                bullets.push({
+                    x: player.x,
+                    y: player.y,
+                    dx: Math.cos(angle) * 6,
+                    dy: Math.sin(angle) * 6,
+                    size: 5,
+                    color: "yellow"
+                });
+            }
+        });
+
+        canvas.addEventListener("mouseup", e => {
+            if (e.button === 2) {
+                moving = false;
+            }
+        });
+
+        canvas.addEventListener("mousemove", e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        function drawShip(ship) {
+            ctx.save();
+            ctx.translate(ship.x, ship.y);
+            ctx.rotate(ship.angle);
+            ctx.beginPath();
+            ctx.moveTo(20, 0);
+            ctx.lineTo(-15, 10);
+            ctx.lineTo(-15, -10);
+            ctx.closePath();
+            ctx.fillStyle = ship.color;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function updatePlayer() {
+            const dx = mouseX - player.x;
+            const dy = mouseY - player.y;
+            const dist = Math.hypot(dx, dy);
+            player.angle = Math.atan2(dy, dx);
+            if (moving && dist > 5) {
+                player.x += (dx / dist) * player.speed;
+                player.y += (dy / dist) * player.speed;
+            }
+        }
+
+        function updateBullets() {
+            bullets.forEach((b, i) => {
+                b.x += b.dx;
+                b.y += b.dy;
+                if (b.x < 0 || b.y < 0 || b.x > canvas.width || b.y > canvas.height) {
+                    bullets.splice(i, 1);
+                }
+            });
+        }
+
+        function updateEnemies() {
+            enemies.forEach(enemy => {
+                enemy.x += enemy.dx;
+                enemy.y += enemy.dy;
+
+                // Bounce off walls
+                if (enemy.x < 0 || enemy.x > canvas.width) enemy.dx *= -1;
+                if (enemy.y < 0 || enemy.y > canvas.height) enemy.dy *= -1;
+
+                // Update angle for drawing
+                enemy.angle = Math.atan2(enemy.dy, enemy.dx);
+            });
+        }
+
+        setInterval(() => {
+            enemies.forEach(enemy => {
+                const angle = Math.random() * Math.PI * 2;
+                enemy.dx = Math.cos(angle) * 2;
+                enemy.dy = Math.sin(angle) * 2;
+            });
+        }, 1000);
+
+        function detectCollisions() {
+            bullets.forEach((b, bi) => {
+                enemies.forEach((e, ei) => {
+                    const dx = b.x - e.x;
+                    const dy = b.y - e.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < e.size) {
+                        bullets.splice(bi, 1);
+                        enemies.splice(ei, 1);
+                        spawnEnemy();
+                    }
+                });
+            });
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            updatePlayer();
+            updateBullets();
+            updateEnemies();
+            detectCollisions();
+
+            drawShip(player);
+            bullets.forEach(b => drawCircle(b));
+            enemies.forEach(e => drawShip(e));
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function drawCircle(obj) {
+            ctx.beginPath();
+            ctx.arc(obj.x, obj.y, obj.size, 0, Math.PI * 2);
+            ctx.fillStyle = obj.color;
+            ctx.fill();
+        }
+
+        gameLoop();
+    </script>
+</body>
+
+</html>
