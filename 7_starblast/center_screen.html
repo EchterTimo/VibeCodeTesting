@@ -1029,6 +1029,13 @@
             p.bullets.push(bullet);
         }
 
+        // Disable browser zoom with Ctrl + Mouse Wheel
+        window.addEventListener('wheel', function (e) {
+            if (e.ctrlKey) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
         gameLoop();
     </script>
 </body>
