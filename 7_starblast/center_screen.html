@@ -33,6 +33,7 @@
 <body>
     <canvas id="game"></canvas>
     <script>
+
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
 
@@ -44,6 +45,12 @@
         }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
+
+
+        // detect smartphone and make popup to switch to pc
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            alert("You need a keyboard to play this game. Please switch to a PC or laptop for the best experience.");
+        }
 
         const keys = {};
         document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
