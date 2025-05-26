@@ -83,7 +83,7 @@
         });
 
         // 1. Only one player
-        const player = makePlayer('green', { up: 'w', left: 'a', right: 'd', shoot: ' ' }, 'Player');
+        const player = makePlayer('green', { up: 'w', down: 's', left: 'a', right: 'd', shoot: ' ' }, 'Player');
         const players = [player];
 
         // 2. World size (bigger than screen for camera movement)
@@ -187,6 +187,11 @@
             if (keys[p.controls.up]) {
                 p.vx += Math.cos(p.angle) * 0.1;
                 p.vy += Math.sin(p.angle) * 0.1;
+            }
+            // Rückwärts fahren mit "down"
+            if (keys[p.controls.down]) {
+                p.vx -= Math.cos(p.angle) * 0.07;
+                p.vy -= Math.sin(p.angle) * 0.07;
             }
             if (keys[p.controls.shoot] && !p.shootCooldown) {
                 shoot(p);
