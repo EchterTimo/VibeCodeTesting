@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Starblast Clone</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="game"></canvas>
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const keys = {};
+        document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        const shipSize = 20;
+        const bulletSpeed = 5;
+        const respawn = () => ({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            angle: Math.random() * Math.PI * 2,
+            vx: 0,
+            vy: 0,
+            alive: true
+        });
+
+        const makePlayer = (color, controls) => ({
+            ...respawn(),
+            color,
+            controls,
+            bullets: []
+        });
+
+        const players = [
+            makePlayer('cyan', { up: 'w', left: 'a', right: 'd', shoot: 's' }),
+            makePlayer('lime', { up: 'o', left: 'k', right: 'ö', shoot: 'l' })
+        ];
+
+        function shoot(player) {
+            if (!player.alive) return;
+            const angle = player.angle;
+            player.bullets.push({
+                x: player.x + Math.cos(angle) * shipSize,
+                y: player.y + Math.sin(angle) * shipSize,
+                dx: Math.cos(angle) * bulletSpeed,
+                dy: Math.sin(angle) * bulletSpeed
+            });
+        }
+
+        function drawPlayer(p) {
+            if (!p.alive) return;
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.angle);
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.moveTo(shipSize, 0); // Spitze nach vorn
+            ctx.lineTo(-shipSize / 2, -shipSize / 2);
+            ctx.lineTo(-shipSize / 2, shipSize / 2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function updatePlayer(p) {
+            if (!p.alive) return;
+            if (keys[p.controls.left]) p.angle -= 0.05;
+            if (keys[p.controls.right]) p.angle += 0.05;
+            if (keys[p.controls.up]) {
+                p.vx += Math.cos(p.angle) * 0.1;
+                p.vy += Math.sin(p.angle) * 0.1;
+            }
+            if (keys[p.controls.shoot] && !p.shootCooldown) {
+                shoot(p);
+                p.shootCooldown = 20;
+            }
+
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= 0.98;
+            p.vy *= 0.98;
+
+            // screen wrap
+            if (p.x < 0) p.x = canvas.width;
+            if (p.x > canvas.width) p.x = 0;
+            if (p.y < 0) p.y = canvas.height;
+            if (p.y > canvas.height) p.y = 0;
+
+            if (p.shootCooldown) p.shootCooldown--;
+        }
+
+        function updateBullets(p, enemy) {
+            p.bullets.forEach(b => {
+                b.x += b.dx;
+                b.y += b.dy;
+            });
+            p.bullets = p.bullets.filter(b => b.x >= 0 && b.x <= canvas.width && b.y >= 0 && b.y <= canvas.height);
+
+            if (enemy.alive) {
+                p.bullets.forEach(b => {
+                    const dx = b.x - enemy.x;
+                    const dy = b.y - enemy.y;
+                    if (Math.hypot(dx, dy) < shipSize) {
+                        enemy.alive = false;
+                        setTimeout(() => Object.assign(enemy, respawn()), 1000);
+                    }
+                });
+            }
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            players.forEach(updatePlayer);
+            players.forEach(p => updateBullets(p, players.find(e => e !== p)));
+            players.forEach(drawPlayer);
+            players.forEach(p => {
+                ctx.fillStyle = p.color;
+                p.bullets.forEach(b => ctx.fillRect(b.x - 2, b.y - 2, 4, 4));
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+
+</html>

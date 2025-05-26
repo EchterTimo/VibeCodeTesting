@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Starblast Multiplayer</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            z-index: 2;
+            font-family: sans-serif;
+            font-size: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">WASD + SPACE to play. Refresh to join!</div>
+    <canvas id="game"></canvas>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        let myId = null;
+        let WIDTH = window.innerWidth, HEIGHT = window.innerHeight;
+        let players = {};
+        let bullets = [];
+
+        function resizeCanvas() {
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        resizeCanvas();
+
+        const keys = {};
+        document.addEventListener('keydown', e => {
+            keys[e.key.toLowerCase()] = true;
+        });
+        document.addEventListener('keyup', e => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        function getInput() {
+            return {
+                up: keys['w'],
+                left: keys['a'],
+                right: keys['d'],
+                shoot: keys[' '],
+            }
+        }
+
+        function drawPlayer(p, isMe) {
+            if (!p.alive) return;
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.angle);
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.moveTo(20, 0);
+            ctx.lineTo(-10, -10);
+            ctx.lineTo(-10, 10);
+            ctx.closePath();
+            ctx.shadowColor = isMe ? '#fff' : p.color;
+            ctx.shadowBlur = isMe ? 15 : 0;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawBullet(b) {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            Object.entries(players).forEach(([sid, p]) => drawPlayer(p, sid === myId));
+            bullets.forEach(drawBullet);
+        }
+
+        // Socket.io
+        const socket = io();
+
+        socket.on('connect', () => {
+            socket.emit('join', {});
+        });
+
+        socket.on('init', data => {
+            myId = data.id;
+            WIDTH = data.width;
+            HEIGHT = data.height;
+            resizeCanvas();
+            players = data.players || {};
+        });
+
+        socket.on('player_update', data => {
+            players = data;
+        });
+
+        socket.on('state', data => {
+            players = data.players;
+            bullets = data.bullets;
+            render();
+        });
+
+        // Input loop
+        setInterval(() => {
+            socket.emit('input', { keys: getInput() });
+        }, 1000 / 60);
+    </script>
+</body>
+
+</html>
