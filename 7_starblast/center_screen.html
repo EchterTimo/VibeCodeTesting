@@ -37,11 +37,10 @@
         const ctx = canvas.getContext('2d');
 
         function resizeCanvas() {
-            const size = Math.min(window.innerWidth, window.innerHeight);
-            canvas.width = size;
-            canvas.height = size;
-            canvas.style.width = size + 'px';
-            canvas.style.height = size + 'px';
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
         }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
@@ -787,7 +786,7 @@
 
         // Spawn friendly drones
         for (let i = 0; i < friendlyDroneCount; i++) {
-            friendlyDrones.push(makeFriendlyDrone('Drone ' + (i + 1)));
+            friendlyDrones.push(makeFriendlyDrone('Wingman ' + (i + 1)));
         }
 
         function updateFriendlyDroneAI(d) {
