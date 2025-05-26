@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Starblast Clone</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #222222;
+            height: 100%;
+            width: 100%;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        canvas {
+            background: black;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="game"></canvas>
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth, window.innerHeight);
+            canvas.width = size;
+            canvas.height = size;
+            canvas.style.width = size + 'px';
+            canvas.style.height = size + 'px';
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const keys = {};
+        document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        const shipSize = 30;
+        const bulletSpeed = 5;
+        const shieldDuration = 20; // frames shield is visible after hit
+        const maxShield = 100;
+        const maxHP = 50;
+        const bulletDamage = 10; // Damage per bullet
+        const fireRate = 10; // frames between shots (lower is faster)
+
+        // Add lastDamageTime and shieldRegenTimer to player state
+        const respawn = () => ({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            angle: Math.random() * Math.PI * 2,
+            vx: 0,
+            vy: 0,
+            alive: true,
+            shield: maxShield,
+            shieldFlash: 0,
+            hp: maxHP,
+            name: '',
+            lastDamageTime: Date.now(),
+            shieldRegenTimer: 0
+        });
+
+        const makePlayer = (color, controls, name) => ({
+            ...respawn(),
+            color,
+            controls,
+            bullets: [],
+            name
+        });
+
+        // 1. Only one player
+        const player = makePlayer('green', { up: 'w', left: 'a', right: 'd', shoot: ' ' }, 'Player');
+        const players = [player];
+
+        // 2. World size (bigger than screen for camera movement)
+        const worldWidth = 20000;
+        const worldHeight = 20000;
+
+        // Rote Zone: 200px vom Rand
+        const dangerZone = 200;
+        const dangerDamagePerSecond = 5;
+        const dangerDamageInterval = 1000; // ms
+
+        // Spieler bekommt Schaden in der roten Zone
+        player.lastDangerDamage = Date.now();
+
+        // 3. Camera logic: always center on player
+        function getCameraOffset() {
+            return {
+                x: player.x - canvas.width / 2,
+                y: player.y - canvas.height / 2
+            };
+        }
+
+        // 4. Update drawStatBar and drawPlayer to use camera offset
+        function drawStatBar(p, cam) {
+            const barWidth = 50;
+            const barHeight = 6;
+            const barSpacing = 8;
+            const x = p.x - barWidth / 2 - cam.x;
+            const y = p.y - shipSize - 24 - cam.y;
+
+            ctx.save();
+            ctx.font = "12px Arial";
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#fff";
+            ctx.fillText(p.name, p.x - cam.x, y - 8);
+
+            // Shield bar (blue)
+            ctx.strokeStyle = "#00f";
+            ctx.strokeRect(x, y, barWidth, barHeight);
+            ctx.fillStyle = "#00f";
+            ctx.globalAlpha = 0.7;
+            ctx.fillRect(x, y, barWidth * (p.shield / maxShield), barHeight);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = "#00f";
+            ctx.textAlign = "left";
+            ctx.fillText(`${p.shield}/${maxShield}`, x + barWidth + 6, y + barHeight);
+
+            // HP bar (red)
+            ctx.strokeStyle = "#f00";
+            ctx.strokeRect(x, y + barHeight + barSpacing, barWidth, barHeight);
+            ctx.fillStyle = "#f00";
+            ctx.globalAlpha = 0.7;
+            ctx.fillRect(x, y + barHeight + barSpacing, barWidth * (p.hp / maxHP), barHeight);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = "#f00";
+            ctx.textAlign = "left";
+            ctx.fillText(`${p.hp}/${maxHP}`, x + barWidth + 6, y + barHeight + barSpacing + barHeight);
+
+            ctx.restore();
+        }
+
+        function drawPlayer(p, cam) {
+            if (!p.alive) return;
+            // Draw shield if active or has shield points
+            if (p.shield > 0 || p.shieldFlash > 0) {
+                ctx.save();
+                ctx.globalAlpha = p.shieldFlash > 0 ? 0.7 : 0.3;
+                ctx.strokeStyle = p.shield > 0 ? 'aqua' : 'gray';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.arc(p.x - cam.x, p.y - cam.y, shipSize + 8, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // Ship
+            ctx.save();
+            ctx.translate(p.x - cam.x, p.y - cam.y);
+            ctx.rotate(p.angle);
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.moveTo(shipSize, 0);
+            ctx.lineTo(-shipSize / 2, -shipSize / 2);
+            ctx.lineTo(-shipSize / 2, shipSize / 2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            // Stat bar
+            drawStatBar(p, cam);
+        }
+
+        // 5. Update updateBullets to not require enemy
+        function updateBullets(p) {
+            p.bullets.forEach(b => {
+                b.x += b.dx;
+                b.y += b.dy;
+            });
+            p.bullets = p.bullets.filter(b =>
+                b.x >= 0 && b.x <= worldWidth && b.y >= 0 && b.y <= worldHeight
+            );
+        }
+
+        // 6. World wrap for player
+        function updatePlayer(p) {
+            if (!p.alive) return;
+            if (keys[p.controls.left]) p.angle -= 0.025;
+            if (keys[p.controls.right]) p.angle += 0.025;
+            if (keys[p.controls.up]) {
+                p.vx += Math.cos(p.angle) * 0.1;
+                p.vy += Math.sin(p.angle) * 0.1;
+            }
+            if (keys[p.controls.shoot] && !p.shootCooldown) {
+                shoot(p);
+                p.shootCooldown = fireRate;
+            }
+
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= 0.98;
+            p.vy *= 0.98;
+
+            // NICHT mehr teleportieren, sondern an Rand stoppen
+            if (p.x < 0) { p.x = 0; p.vx = 0; }
+            if (p.x > worldWidth) { p.x = worldWidth; p.vx = 0; }
+            if (p.y < 0) { p.y = 0; p.vy = 0; }
+            if (p.y > worldHeight) { p.y = worldHeight; p.vy = 0; }
+
+            if (p.shootCooldown) p.shootCooldown--;
+
+            if (p.shieldFlash > 0) p.shieldFlash--;
+
+            // Schaden in der roten Zone
+            const now = Date.now();
+            const inDangerZone =
+                p.x < dangerZone ||
+                p.x > worldWidth - dangerZone ||
+                p.y < dangerZone ||
+                p.y > worldHeight - dangerZone;
+
+            if (inDangerZone) {
+                if (!p.lastDangerDamage) p.lastDangerDamage = now;
+                if (now - p.lastDangerDamage >= dangerDamageInterval) {
+                    if (p.shield > 0) {
+                        p.shield = Math.max(0, p.shield - dangerDamagePerSecond);
+                        p.shieldFlash = shieldDuration;
+                    } else if (p.hp > 0) {
+                        p.hp = Math.max(0, p.hp - dangerDamagePerSecond);
+                    }
+                    p.lastDangerDamage += dangerDamageInterval;
+                    p.lastDamageTime = now; // Schildregeneration unterbrechen!
+                }
+            } else {
+                p.lastDangerDamage = now;
+            }
+            // Merke, ob Spieler in der Zone ist (für Nebel)
+            p.inDangerZone = inDangerZone;
+        }
+
+        // 7. Draw world background grid for effect
+        function drawWorldGrid(cam) {
+            ctx.save();
+            ctx.strokeStyle = "#333";
+            ctx.lineWidth = 1;
+            for (let x = 0; x < worldWidth; x += 100) {
+                ctx.beginPath();
+                ctx.moveTo(x - cam.x, -cam.y);
+                ctx.lineTo(x - cam.x, worldHeight - cam.y);
+                ctx.stroke();
+            }
+            for (let y = 0; y < worldHeight; y += 100) {
+                ctx.beginPath();
+                ctx.moveTo(-cam.x, y - cam.y);
+                ctx.lineTo(worldWidth - cam.x, y - cam.y);
+                ctx.stroke();
+            }
+
+            // Rote Zone zeichnen
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 4;
+            ctx.globalAlpha = 0.4;
+            ctx.strokeRect(
+                dangerZone - cam.x,
+                dangerZone - cam.y,
+                worldWidth - 2 * dangerZone,
+                worldHeight - 2 * dangerZone
+            );
+            ctx.globalAlpha = 1;
+            ctx.restore();
+        }
+
+        // 8. Main game loop
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const now = Date.now();
+            // Shield regen
+            if (player.alive && player.shield < maxShield) {
+                if (now - player.lastDamageTime > 3000) {
+                    if (!player.shieldRegenTimer) player.shieldRegenTimer = now;
+                    if (now - player.shieldRegenTimer >= 100) {
+                        player.shield += 1;
+                        player.shield = Math.min(player.shield, maxShield);
+                        player.shieldRegenTimer += 100;
+                    }
+                } else {
+                    player.shieldRegenTimer = 0;
+                }
+            }
+
+            updatePlayer(player);
+            updateBullets(player);
+
+            const cam = getCameraOffset();
+
+            drawWorldGrid(cam);
+            drawPlayer(player, cam);
+
+            // Draw bullets
+            ctx.fillStyle = player.color;
+            player.bullets.forEach(b => ctx.fillRect(b.x - 2 - cam.x, b.y - 2 - cam.y, 4, 4));
+
+            // Roter Nebel, wenn in Danger Zone
+            if (player.inDangerZone) {
+                ctx.save();
+                ctx.globalAlpha = 0.25;
+                ctx.fillStyle = "red";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.restore();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function shoot(p) {
+            const angle = p.angle;
+            const bullet = {
+                x: p.x + Math.cos(angle) * (shipSize + 10),
+                y: p.y + Math.sin(angle) * (shipSize + 10),
+                dx: Math.cos(angle) * bulletSpeed + p.vx,
+                dy: Math.sin(angle) * bulletSpeed + p.vy
+            };
+            p.bullets.push(bullet);
+        }
+
+        gameLoop();
+    </script>
+</body>
+
+</html>
