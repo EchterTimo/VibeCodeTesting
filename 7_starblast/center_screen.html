@@ -179,7 +179,7 @@
             );
         }
 
-        // 6. World wrap for player
+        // 6. World wrap für Spieler ENTFERNT, stattdessen Begrenzung:
         function updatePlayer(p) {
             if (!p.alive) return;
             if (keys[p.controls.left]) p.angle -= 0.025;
@@ -198,11 +198,11 @@
             p.vx *= 0.98;
             p.vy *= 0.98;
 
-            // World wrap
-            if (p.x < 0) p.x = worldWidth;
-            if (p.x > worldWidth) p.x = 0;
-            if (p.y < 0) p.y = worldHeight;
-            if (p.y > worldHeight) p.y = 0;
+            // Begrenzung an den Wänden
+            if (p.x < 0) { p.x = 0; p.vx = 0; }
+            if (p.x > worldWidth) { p.x = worldWidth; p.vx = 0; }
+            if (p.y < 0) { p.y = 0; p.vy = 0; }
+            if (p.y > worldHeight) { p.y = worldHeight; p.vy = 0; }
 
             if (p.shootCooldown) p.shootCooldown--;
 
@@ -260,23 +260,55 @@
                 y,
                 radius: asteroidMinSize + Math.random() * (asteroidMaxSize - asteroidMinSize),
                 dx: Math.cos(angle) * speed,
-                dy: Math.sin(angle) * speed
+                dy: Math.sin(angle) * speed,
+                hp: 100,
+                showHp: false,
+                showHpTimer: 0
             });
         }
 
-        // Asteroiden bewegen und zeichnen
+        // Asteroiden bewegen und an Wänden abprallen mit Zufallswinkel
         function updateAsteroids() {
             asteroids.forEach(a => {
                 a.x += a.dx;
                 a.y += a.dy;
-                // World wrap
-                if (a.x < 0) a.x = worldWidth;
-                if (a.x > worldWidth) a.x = 0;
-                if (a.y < 0) a.y = worldHeight;
-                if (a.y > worldHeight) a.y = 0;
+
+                let bounced = false;
+
+                // Linke/rechte Wand
+                if (a.x - a.radius < 0) {
+                    a.x = a.radius;
+                    bounced = true;
+                }
+                if (a.x + a.radius > worldWidth) {
+                    a.x = worldWidth - a.radius;
+                    bounced = true;
+                }
+                // Oben/unten
+                if (a.y - a.radius < 0) {
+                    a.y = a.radius;
+                    bounced = true;
+                }
+                if (a.y + a.radius > worldHeight) {
+                    a.y = worldHeight - a.radius;
+                    bounced = true;
+                }
+
+                if (bounced) {
+                    // Zufälliger Winkel zwischen 0 und 90 Grad (in Radiant)
+                    const angle = Math.random() * (Math.PI / 2);
+                    // Zufällig entscheiden, ob X- oder Y-Richtung invertiert wird
+                    const speed = Math.sqrt(a.dx * a.dx + a.dy * a.dy);
+                    // Neue Richtung berechnen
+                    const signX = Math.random() < 0.5 ? 1 : -1;
+                    const signY = Math.random() < 0.5 ? 1 : -1;
+                    a.dx = Math.cos(angle) * speed * signX;
+                    a.dy = Math.sin(angle) * speed * signY;
+                }
             });
         }
 
+        // Asteroiden zeichnen (mit HP-Leiste falls showHp aktiv)
         function drawAsteroids(cam) {
             ctx.save();
             ctx.strokeStyle = "#888";
@@ -286,6 +318,22 @@
                 ctx.arc(a.x - cam.x, a.y - cam.y, a.radius, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
+
+                // HP-Leiste nur anzeigen, wenn showHp aktiv
+                if (a.showHp) {
+                    const barWidth = 50;
+                    const barHeight = 6;
+                    const x = a.x - barWidth / 2 - cam.x;
+                    const y = a.y - a.radius - 18 - cam.y;
+                    ctx.save();
+                    ctx.globalAlpha = 0.85;
+                    ctx.strokeStyle = "#fff";
+                    ctx.strokeRect(x, y, barWidth, barHeight);
+                    ctx.fillStyle = "#0f0";
+                    ctx.fillRect(x, y, barWidth * (a.hp / 100), barHeight);
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+                }
             });
             ctx.restore();
         }
@@ -297,22 +345,82 @@
                 const dist = Math.hypot(player.x - a.x, player.y - a.y);
                 if (dist < shipSize + a.radius) {
                     // Schaden von 50
+                    let damage = 50;
                     if (player.shield > 0) {
-                        const shieldDamage = Math.min(player.shield, 50);
+                        const shieldDamage = Math.min(player.shield, damage);
                         player.shield -= shieldDamage;
-                        if (shieldDamage < 50) {
-                            player.hp -= (50 - shieldDamage);
-                        }
-                    } else {
-                        player.hp -= 50;
+                        damage -= shieldDamage;
+                    }
+                    if (damage > 0) {
+                        player.hp -= damage;
                     }
                     player.shieldFlash = shieldDuration;
                     player.lastDamageTime = Date.now();
-                    // Optional: Spieler kurz unverwundbar machen oder Asteroid versetzen
+
                     // Asteroid an neue Position setzen
                     const { x, y } = randomAsteroidPosition();
                     a.x = x;
                     a.y = y;
+
+                    // Spieler tot?
+                    if (player.hp <= 0) {
+                        player.alive = false;
+                        // Optional: Respawn nach kurzer Zeit
+                        setTimeout(() => {
+                            Object.assign(player, respawn());
+                            player.alive = true;
+                        }, 1500);
+                    }
+                }
+            });
+        }
+
+        // Bullets treffen Asteroiden
+        function checkBulletAsteroidCollisions() {
+            player.bullets.forEach(bullet => {
+                asteroids.forEach(a => {
+                    const dist = Math.hypot(bullet.x - a.x, bullet.y - a.y);
+                    if (dist < a.radius) {
+                        // Asteroid Schaden
+                        a.hp -= bulletDamage;
+                        a.showHp = true;
+                        a.showHpTimer = 60; // ca. 1 Sekunde sichtbar
+                        // Bullet entfernen
+                        bullet._hit = true;
+                    }
+                });
+            });
+            // Entferne getroffene Bullets
+            player.bullets = player.bullets.filter(b => !b._hit);
+            // Entferne zerstörte Asteroiden (optional: respawnen)
+            asteroids.forEach((a, i) => {
+                if (a.hp <= 0) {
+                    // Respawn an neuer Position
+                    const { x, y } = randomAsteroidPosition();
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = asteroidMinSpeed + Math.random() * (asteroidMaxSpeed - asteroidMinSpeed);
+                    asteroids[i] = {
+                        x,
+                        y,
+                        radius: asteroidMinSize + Math.random() * (asteroidMaxSize - asteroidMinSize),
+                        dx: Math.cos(angle) * speed,
+                        dy: Math.sin(angle) * speed,
+                        hp: 100,
+                        showHp: false,
+                        showHpTimer: 0
+                    };
+                }
+            });
+        }
+
+        // Asteroiden-HP-Leiste Timer aktualisieren
+        function updateAsteroidHpBars() {
+            asteroids.forEach(a => {
+                if (a.showHp) {
+                    a.showHpTimer--;
+                    if (a.showHpTimer <= 0) {
+                        a.showHp = false;
+                    }
                 }
             });
         }
@@ -340,6 +448,8 @@
             updateBullets(player);
 
             updateAsteroids();
+            updateAsteroidHpBars();
+            checkBulletAsteroidCollisions();
             checkAsteroidCollisions();
 
             const cam = getCameraOffset();
