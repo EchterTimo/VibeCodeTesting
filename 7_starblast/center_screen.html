@@ -127,7 +127,7 @@
             ctx.globalAlpha = 1;
             ctx.fillStyle = "#00f";
             ctx.textAlign = "left";
-            ctx.fillText(`${p.shield}/${maxShield}`, x + barWidth + 6, y + barHeight);
+            ctx.fillText(`${p.shield}/${maxShield}`, x + barWidth + 18, y + barHeight);
 
             // HP bar (red)
             ctx.strokeStyle = "#f00";
@@ -138,7 +138,7 @@
             ctx.globalAlpha = 1;
             ctx.fillStyle = "#f00";
             ctx.textAlign = "left";
-            ctx.fillText(`${p.hp}/${maxHP}`, x + barWidth + 6, y + barHeight + barSpacing + barHeight);
+            ctx.fillText(`${p.hp}/${maxHP}`, x + barWidth + 18, y + barHeight + barSpacing + barHeight);
 
             ctx.restore();
         }
