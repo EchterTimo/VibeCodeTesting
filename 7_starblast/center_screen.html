@@ -512,44 +512,57 @@
         function updateEnemyAI(e) {
             if (!e.alive) return;
 
-            // Abstand zum Spieler berechnen
-            const dx = player.x - e.x;
-            const dy = player.y - e.y;
-            const dist = Math.hypot(dx, dy);
+            // Zielauswahl: Spieler bevorzugen, sonst nächste freundliche Drohne
+            let target = null;
+            let dx, dy, dist;
 
-            // Kollisionsvermeidung mit Spieler
-            if (dist < shipSize * 2) {
-                // Drehe vom Spieler weg und beschleunige rückwärts
-                const avoidAngle = Math.atan2(e.y - player.y, e.x - player.x);
+            // 1. Spieler in Reichweite?
+            dx = player.x - e.x;
+            dy = player.y - e.y;
+            dist = Math.hypot(dx, dy);
+            if (player.alive && dist <= enemySightRange) {
+                target = player;
+            } else {
+                // 2. Nächste freundliche Drohne in Reichweite suchen
+                let closestDrone = null;
+                let closestDist = Infinity;
+                friendlyDrones.forEach(d => {
+                    if (!d.alive) return;
+                    const ddx = d.x - e.x;
+                    const ddy = d.y - e.y;
+                    const ddist = Math.hypot(ddx, ddy);
+                    if (ddist < enemySightRange && ddist < closestDist) {
+                        closestDrone = d;
+                        closestDist = ddist;
+                    }
+                });
+                if (closestDrone) {
+                    target = closestDrone;
+                    dx = target.x - e.x;
+                    dy = target.y - e.y;
+                    dist = Math.hypot(dx, dy);
+                }
+            }
+
+            // Kollisionsvermeidung mit Ziel (nur falls Ziel existiert)
+            if (target && dist < shipSize * 2) {
+                // Drehe vom Ziel weg und beschleunige rückwärts
+                const avoidAngle = Math.atan2(e.y - target.y, e.x - target.x);
                 e.angle += Math.sign(avoidAngle - e.angle) * Math.min(Math.abs(avoidAngle - e.angle), 0.05);
                 e.vx += Math.cos(e.angle) * 0.12;
                 e.vy += Math.sin(e.angle) * 0.12;
-            } else {
-                // Angriffsmuster
+            } else if (target) {
+                // Angriffsmuster auf Ziel
                 let targetAngle = e.ai.patrolAngle;
-                let seesPlayer = false;
 
-                // Wenn Spieler in Sichtweite, Angriff einleiten
-                if (player.alive && canSeePlayer(e)) {
-                    seesPlayer = true;
-                    // Wenn zu nah, neuen Anflugwinkel wählen (Kreis um Spieler)
-                    if (dist < 180) {
-                        // Wähle neuen Anflugwinkel, der vom Spieler wegführt
-                        e.ai.patrolAngle = Math.atan2(e.y - player.y, e.x - player.x) + (Math.random() - 0.5);
-                        e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
-                        targetAngle = e.ai.patrolAngle;
-                    } else {
-                        // Ziel auf Spieler ausrichten
-                        targetAngle = Math.atan2(dy, dx);
-                    }
-                } else {
-                    // Normales Patrouillieren
-                    e.ai.patrolTimer--;
-                    if (e.ai.patrolTimer <= 0) {
-                        e.ai.patrolAngle = Math.random() * Math.PI * 2;
-                        e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
-                    }
+                // Wenn zu nah, neuen Anflugwinkel wählen (Kreis um Ziel)
+                if (dist < 180) {
+                    e.ai.patrolAngle = Math.atan2(e.y - target.y, e.x - target.x) + (Math.random() - 0.5);
+                    e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
                     targetAngle = e.ai.patrolAngle;
+                } else {
+                    // Ziel auf Target ausrichten
+                    targetAngle = Math.atan2(dy, dx);
                 }
 
                 // Sanftes Drehen zum Zielwinkel
@@ -559,7 +572,7 @@
                 e.angle += Math.sign(da) * Math.min(Math.abs(da), 0.04);
 
                 // Vorwärts bewegen (etwas schneller beim Angriff)
-                if (seesPlayer && dist > 180) {
+                if (dist > 180) {
                     e.vx += Math.cos(e.angle) * 0.11;
                     e.vy += Math.sin(e.angle) * 0.11;
                 } else {
@@ -567,11 +580,26 @@
                     e.vy += Math.sin(e.angle) * 0.07;
                 }
 
-                // Schießen, wenn Spieler im Visier und nicht zu nah
-                if (seesPlayer && dist > 160 && !e.ai.shootCooldown) {
+                // Schießen, wenn Ziel im Visier und nicht zu nah
+                if (dist > 160 && !e.ai.shootCooldown) {
                     shoot(e);
                     e.ai.shootCooldown = enemyFireRate;
                 }
+            } else {
+                // Kein Ziel: Patrouillieren wie bisher
+                e.ai.patrolTimer--;
+                if (e.ai.patrolTimer <= 0) {
+                    e.ai.patrolAngle = Math.random() * Math.PI * 2;
+                    e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
+                }
+                let targetAngle = e.ai.patrolAngle;
+                let da = targetAngle - e.angle;
+                while (da > Math.PI) da -= 2 * Math.PI;
+                while (da < -Math.PI) da += 2 * Math.PI;
+                e.angle += Math.sign(da) * Math.min(Math.abs(da), 0.04);
+
+                e.vx += Math.cos(e.angle) * 0.07;
+                e.vy += Math.sin(e.angle) * 0.07;
             }
 
             // Cooldown
@@ -610,7 +638,6 @@
                 e.angle += Math.sign(toCenter - e.angle) * Math.min(Math.abs(toCenter - e.angle), 0.1);
                 e.vx += Math.cos(toCenter) * 0.2;
                 e.vy += Math.sin(toCenter) * 0.2;
-                // Optional: Reset Angriff, damit sie nicht direkt wieder zur Wand fliegen
                 e.ai.patrolAngle = toCenter;
                 e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
             }
