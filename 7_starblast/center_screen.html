@@ -581,7 +581,20 @@
 
         // Draw all enemies
         function drawEnemies(cam) {
-            enemies.forEach(e => drawPlayer(e, cam));
+            enemies.forEach(e => {
+                // Sichtweite visualisieren
+                if (e.alive) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.08; // sehr leichtes Grau
+                    ctx.beginPath();
+                    ctx.arc(e.x - cam.x, e.y - cam.y, enemySightRange, 0, Math.PI * 2);
+                    ctx.fillStyle = "#aaa";
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+                }
+                drawPlayer(e, cam);
+            });
             // Draw enemy bullets
             ctx.fillStyle = 'red';
             enemies.forEach(e => {
