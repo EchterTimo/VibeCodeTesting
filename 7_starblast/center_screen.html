@@ -737,6 +737,169 @@
             });
         }
 
+        // --- FRIENDLY DRONES ---
+
+        const friendlyDroneCount = 2;
+        const friendlyDrones = [];
+        const friendlyDroneSightRange = 600;
+        const friendlyDroneFireRate = 16;
+
+        function makeFriendlyDrone(name) {
+            return {
+                ...respawn(),
+                color: 'cyan',
+                controls: {},
+                bullets: [],
+                name,
+                ai: {
+                    targetEnemy: null,
+                    shootCooldown: 0
+                }
+            };
+        }
+
+        // Spawn friendly drones
+        for (let i = 0; i < friendlyDroneCount; i++) {
+            friendlyDrones.push(makeFriendlyDrone('Drone ' + (i + 1)));
+        }
+
+        function updateFriendlyDroneAI(d) {
+            if (!d.alive) return;
+
+            // Ziel: Feind in Sichtweite suchen
+            let closestEnemy = null;
+            let closestDist = Infinity;
+            enemies.forEach(e => {
+                if (!e.alive) return;
+                const dx = e.x - d.x;
+                const dy = e.y - d.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < friendlyDroneSightRange && dist < closestDist) {
+                    closestEnemy = e;
+                    closestDist = dist;
+                }
+            });
+
+            if (closestEnemy) {
+                d.ai.targetEnemy = closestEnemy;
+            } else {
+                d.ai.targetEnemy = null;
+            }
+
+            // Zielposition bestimmen
+            let targetX, targetY;
+            if (d.ai.targetEnemy) {
+                targetX = d.ai.targetEnemy.x;
+                targetY = d.ai.targetEnemy.y;
+            } else {
+                // Folge dem Spieler, aber halte Abstand
+                const dx = player.x - d.x;
+                const dy = player.y - d.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist > 80) {
+                    targetX = player.x;
+                    targetY = player.y;
+                } else {
+                    // Bleib in der Nähe, aber nicht zu nah
+                    targetX = d.x;
+                    targetY = d.y;
+                }
+            }
+
+            // Drehen und bewegen
+            const dx = targetX - d.x;
+            const dy = targetY - d.y;
+            const targetAngle = Math.atan2(dy, dx);
+            let da = targetAngle - d.angle;
+            while (da > Math.PI) da -= 2 * Math.PI;
+            while (da < -Math.PI) da += 2 * Math.PI;
+            d.angle += Math.sign(da) * Math.min(Math.abs(da), 0.05);
+
+            // Geschwindigkeit
+            if (Math.hypot(dx, dy) > 40) {
+                d.vx += Math.cos(d.angle) * 0.09;
+                d.vy += Math.sin(d.angle) * 0.09;
+            }
+
+            // Schießen auf Gegner
+            if (d.ai.targetEnemy && !d.ai.shootCooldown && Math.hypot(dx, dy) < 400) {
+                shoot(d);
+                d.ai.shootCooldown = friendlyDroneFireRate;
+            }
+
+            // Cooldown
+            if (d.ai.shootCooldown) d.ai.shootCooldown--;
+
+            // Bewegung und Begrenzung
+            d.x += d.vx;
+            d.y += d.vy;
+            d.vx *= 0.98;
+            d.vy *= 0.98;
+
+            // Begrenzung an den Wänden
+            let wallMargin = shipSize + 10;
+            if (d.x < wallMargin) d.x = wallMargin;
+            if (d.x > worldWidth - wallMargin) d.x = worldWidth - wallMargin;
+            if (d.y < wallMargin) d.y = wallMargin;
+            if (d.y > worldHeight - wallMargin) d.y = worldHeight - wallMargin;
+
+            if (d.shieldFlash > 0) d.shieldFlash--;
+        }
+
+        // Update und Draw Funktionen für Drohnen
+        function updateFriendlyDrones() {
+            friendlyDrones.forEach(updateFriendlyDroneAI);
+            friendlyDrones.forEach(updateBullets);
+        }
+
+        function drawFriendlyDrones(cam) {
+            friendlyDrones.forEach(d => {
+                drawPlayer(d, cam);
+            });
+            // Drohnen-Bullets
+            ctx.fillStyle = 'cyan';
+            friendlyDrones.forEach(d => {
+                d.bullets.forEach(b => ctx.fillRect(b.x - 2 - cam.x, b.y - 2 - cam.y, 4, 4));
+            });
+        }
+
+        // Drohnen-Bullets treffen Gegner
+        function checkFriendlyDroneBulletHits() {
+            friendlyDrones.forEach(d => {
+                d.bullets.forEach(bullet => {
+                    enemies.forEach(e => {
+                        if (!e.alive) return;
+                        const dist = Math.hypot(bullet.x - e.x, bullet.y - e.y);
+                        if (dist < shipSize) {
+                            // Damage
+                            let damage = bulletDamage;
+                            if (e.shield > 0) {
+                                const shieldDamage = Math.min(e.shield, damage);
+                                e.shield -= shieldDamage;
+                                damage -= shieldDamage;
+                            }
+                            if (damage > 0) {
+                                e.hp -= damage;
+                            }
+                            e.shieldFlash = shieldDuration;
+                            e.lastDamageTime = Date.now();
+                            bullet._hit = true;
+
+                            if (e.hp <= 0) {
+                                e.alive = false;
+                                setTimeout(() => {
+                                    Object.assign(e, respawn());
+                                    e.alive = true;
+                                }, 1500);
+                            }
+                        }
+                    });
+                });
+                // Remove hit bullets
+                d.bullets = d.bullets.filter(b => !b._hit);
+            });
+        }
+
         // 8. Main game loop
         function gameLoop() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -782,6 +945,11 @@
             // Draw player bullets
             ctx.fillStyle = player.color;
             player.bullets.forEach(b => ctx.fillRect(b.x - 2 - cam.x, b.y - 2 - cam.y, 4, 4));
+
+            // --- FRIENDLY DRONES ---
+            updateFriendlyDrones();
+            checkFriendlyDroneBulletHits();
+            drawFriendlyDrones(cam);
 
             requestAnimationFrame(gameLoop);
         }
