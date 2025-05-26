@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<!-- questions: https://gist.github.com/cmota/f7919cd962a061126effb2d7118bec72 -->
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quiz</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e2f;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .quiz-container {
+            background: #2b2b48;
+            border-radius: 12px;
+            padding: 30px 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.7);
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 1rem;
+            font-weight: 700;
+            color: #ffe600;
+            /* Kahoot Gelb */
+            text-shadow: 0 0 5px #ffe600;
+        }
+
+        .question {
+            font-size: 1.3rem;
+            margin-bottom: 2rem;
+            min-height: 60px;
+        }
+
+        .answers {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 1.5rem;
+        }
+
+        button.answer {
+            padding: 15px 20px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            color: white;
+            transition: background-color 0.3s, transform 0.2s;
+            user-select: none;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Kahoot-like colors for answers */
+        button.answer.A {
+            background-color: #f44242;
+        }
+
+        /* rot */
+        button.answer.B {
+            background-color: #37b44a;
+        }
+
+        /* grün */
+        button.answer.C {
+            background-color: #f4b842;
+        }
+
+        /* gelb */
+        button.answer.D {
+            background-color: #4269f4;
+        }
+
+        /* blau */
+
+        button.answer:hover:not(:disabled) {
+            filter: brightness(110%);
+            transform: scale(1.05);
+        }
+
+        button.answer:disabled {
+            cursor: default;
+            opacity: 0.7;
+        }
+
+        .feedback {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            min-height: 1.5em;
+            text-shadow: 0 0 5px #000;
+        }
+
+        .feedback.correct {
+            color: #37b44a;
+        }
+
+        .feedback.wrong {
+            color: #f44242;
+        }
+
+        button.next {
+            background-color: #ffe600;
+            border: none;
+            border-radius: 10px;
+            padding: 12px 30px;
+            font-weight: 700;
+            font-size: 1rem;
+            color: #1e1e2f;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(255, 230, 0, 0.7);
+            user-select: none;
+            transition: background-color 0.3s, transform 0.2s;
+            display: none;
+            margin: 0 auto;
+        }
+
+        button.next:hover {
+            background-color: #ffde00;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="quiz-container" role="main" aria-live="polite">
+        <h1>Quiz</h1>
+        <div class="question" id="question">Loading question...</div>
+        <div class="answers" id="answers"></div>
+        <div class="feedback" id="feedback" aria-live="assertive"></div>
+        <button class="next" id="nextBtn" aria-label="Next question">Next</button>
+    </div>
+
+    <script>
+        let questions = [];
+        let currentIndex = 0;
+        const questionEl = document.getElementById('question');
+        const answersEl = document.getElementById('answers');
+        const feedbackEl = document.getElementById('feedback');
+        const nextBtn = document.getElementById('nextBtn');
+
+        // Fisher-Yates Shuffle
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function loadQuestions() {
+            fetch('/3_quiz/questions.json')
+                .then(response => {
+                    if (!response.ok) throw new Error('Network error while loading questions');
+                    return response.json();
+                })
+                .then(data => {
+                    questions = shuffle(data);
+                    currentIndex = 0;
+                    showQuestion();
+                })
+                .catch(err => {
+                    questionEl.textContent = 'Error loading questions.';
+                    console.error(err);
+                });
+        }
+
+        function showQuestion() {
+            feedbackEl.textContent = '';
+            nextBtn.style.display = 'none';
+
+            const q = questions[currentIndex];
+            questionEl.textContent = q.question;
+
+            // Show answers
+            answersEl.innerHTML = '';
+            ['A', 'B', 'C', 'D'].forEach(letter => {
+                if (q[letter]) {
+                    const btn = document.createElement('button');
+                    btn.className = 'answer ' + letter;
+                    btn.textContent = `${letter}: ${q[letter]}`;
+                    btn.setAttribute('data-letter', letter);
+                    btn.addEventListener('click', selectAnswer);
+                    btn.disabled = false;
+                    answersEl.appendChild(btn);
+                }
+            });
+        }
+
+        function selectAnswer(e) {
+            const selected = e.currentTarget;
+            const selectedLetter = selected.getAttribute('data-letter');
+            const correctLetter = questions[currentIndex].answer;
+
+            // Disable all buttons
+            Array.from(answersEl.children).forEach(btn => btn.disabled = true);
+
+            if (selectedLetter === correctLetter) {
+                feedbackEl.textContent = 'Correct!';
+                feedbackEl.className = 'feedback correct';
+            } else {
+                feedbackEl.textContent = `Wrong! Correct answer is ${correctLetter}.`;
+                feedbackEl.className = 'feedback wrong';
+            }
+            nextBtn.style.display = 'inline-block';
+        }
+
+        nextBtn.addEventListener('click', () => {
+            currentIndex++;
+            if (currentIndex >= questions.length) {
+                questions = shuffle(questions); // shuffle again
+                currentIndex = 0;
+            }
+            showQuestion();
+        });
+
+        loadQuestions();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Slither.io Klon AI</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #111;
+        }
+
+        canvas {
+            display: block;
+            background: #222;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="game"></canvas>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Schlange
+        let snake = {
+            body: [{ x: width / 2, y: height / 2 }],
+            length: 10,
+            speed: 2,
+            direction: { x: 0, y: 0 }
+        };
+
+        // Punkte (Futter)
+        let foods = [];
+
+        function spawnFood() {
+            foods.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                size: 6
+            });
+        }
+        for (let i = 0; i < 10; i++) spawnFood();
+
+        // Hilfsfunktion: Abstand
+        function dist(a, b) {
+            return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+        }
+
+        // AI: Finde das nächste Futter
+        function findNearestFood(head) {
+            let minDist = Infinity;
+            let nearest = foods[0];
+            for (let food of foods) {
+                let d = dist(head, food);
+                if (d < minDist) {
+                    minDist = d;
+                    nearest = food;
+                }
+            }
+            return nearest;
+        }
+
+        // Game Loop
+        function update() {
+            // AI: Richtung auf das nächste Futter
+            let head = snake.body[0];
+            let target = findNearestFood(head);
+            let dx = target.x - head.x;
+            let dy = target.y - head.y;
+            let distToTarget = Math.sqrt(dx * dx + dy * dy);
+
+            if (distToTarget > 1) {
+                snake.direction.x = dx / distToTarget;
+                snake.direction.y = dy / distToTarget;
+            }
+
+            // Neue Kopfposition
+            let newHead = {
+                x: head.x + snake.direction.x * snake.speed,
+                y: head.y + snake.direction.y * snake.speed
+            };
+            snake.body.unshift(newHead);
+
+            // Länge der Schlange anpassen
+            while (snake.body.length > snake.length) {
+                snake.body.pop();
+            }
+
+            // Kollision mit Futter
+            for (let i = foods.length - 1; i >= 0; i--) {
+                if (dist(newHead, foods[i]) < 10) {
+                    snake.length += 5;
+                    foods.splice(i, 1);
+                    spawnFood();
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Futter zeichnen
+            for (let food of foods) {
+                ctx.fillStyle = 'lime';
+                ctx.beginPath();
+                ctx.arc(food.x, food.y, food.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Schlange zeichnen
+            ctx.fillStyle = 'cyan';
+            for (let segment of snake.body) {
+                ctx.beginPath();
+                ctx.arc(segment.x, segment.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+        loop();
+    </script>
+
+</body>
+
+</html>

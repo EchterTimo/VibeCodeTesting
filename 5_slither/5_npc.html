@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Slither.io Klon AI mit Mehrspielern - Punkte bei Tod</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #111;
+        }
+
+        canvas {
+            display: block;
+            background: #222;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="game"></canvas>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        function dist(a, b) {
+            return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+        }
+
+        const FOOD_SIZE = 6;
+        const SEGMENT_RADIUS = 8;
+
+        // Punkte (Futter)
+        let foods = [];
+        function spawnFood(x, y) {
+            foods.push({
+                x: x !== undefined ? x : Math.random() * width,
+                y: y !== undefined ? y : Math.random() * height,
+                size: FOOD_SIZE
+            });
+        }
+
+        // Initial 10 Punkte beim Start
+        for (let i = 0; i < 10; i++) spawnFood();
+
+        function createPlayerSnake() {
+            return {
+                id: 'player',
+                color: 'white',
+                body: [{ x: width / 2, y: height / 2 }],
+                length: 15,
+                speed: 2.5,
+                direction: { x: 0, y: 0 },
+                isAI: false,
+            };
+        }
+
+        const AI_COLORS = ['red', 'green', 'blue', 'orange'];
+
+        function createAISnake(id) {
+            return {
+                id,
+                color: AI_COLORS[id % AI_COLORS.length],
+                body: [{
+                    x: Math.random() * width,
+                    y: Math.random() * height
+                }],
+                length: 12 + Math.floor(Math.random() * 10),
+                speed: 2,
+                direction: { x: 0, y: 0 },
+                isAI: true,
+            };
+        }
+
+        let snakes = [createPlayerSnake()];
+        for (let i = 0; i < 4; i++) {
+            snakes.push(createAISnake(i));
+        }
+
+        let mouse = { x: width / 2, y: height / 2 };
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        function findNearestFood(head) {
+            let minDist = Infinity;
+            let nearest = null;
+            for (let food of foods) {
+                let d = dist(head, food);
+                if (d < minDist) {
+                    minDist = d;
+                    nearest = food;
+                }
+            }
+            return nearest;
+        }
+
+        // Timer für Punkt-Spawn alle 2 Sekunden
+        let lastFoodSpawnTime = 0;
+        const FOOD_SPAWN_INTERVAL = 2000; // ms
+
+        function update(timestamp) {
+            if (!timestamp) timestamp = performance.now();
+
+            // 1. Bewegung jeder Schlange
+            for (let snake of snakes) {
+                let head = snake.body[0];
+                if (snake.isAI) {
+                    let target = findNearestFood(head);
+                    if (!target) continue;
+                    let dx = target.x - head.x;
+                    let dy = target.y - head.y;
+                    let distToTarget = Math.sqrt(dx * dx + dy * dy);
+                    if (distToTarget > 1) {
+                        snake.direction.x = dx / distToTarget;
+                        snake.direction.y = dy / distToTarget;
+                    }
+                } else {
+                    let dx = mouse.x - head.x;
+                    let dy = mouse.y - head.y;
+                    let distToMouse = Math.sqrt(dx * dx + dy * dy);
+                    if (distToMouse > 1) {
+                        snake.direction.x = dx / distToMouse;
+                        snake.direction.y = dy / distToMouse;
+                    }
+                }
+
+                let newHead = {
+                    x: head.x + snake.direction.x * snake.speed,
+                    y: head.y + snake.direction.y * snake.speed
+                };
+
+                // Bildschirm-Wrap-around
+                if (newHead.x < 0) newHead.x = width;
+                if (newHead.x > width) newHead.x = 0;
+                if (newHead.y < 0) newHead.y = height;
+                if (newHead.y > height) newHead.y = 0;
+
+                snake.body.unshift(newHead);
+
+                while (snake.body.length > snake.length) {
+                    snake.body.pop();
+                }
+            }
+
+            // 2. Kollision mit Futter
+            for (let snake of snakes) {
+                let head = snake.body[0];
+                for (let i = foods.length - 1; i >= 0; i--) {
+                    if (dist(head, foods[i]) < SEGMENT_RADIUS + FOOD_SIZE) {
+                        snake.length += 5;
+                        foods.splice(i, 1);
+                        // Kein spawnFood() mehr hier
+                    }
+                }
+            }
+
+            // 3. Kopf-Körper-Kollision zwischen Schlangen
+            let deadSnakes = [];
+            for (let i = 0; i < snakes.length; i++) {
+                let snakeA = snakes[i];
+                let headA = snakeA.body[0];
+                for (let j = 0; j < snakes.length; j++) {
+                    if (i === j) continue;
+                    let snakeB = snakes[j];
+                    for (let k = 1; k < snakeB.body.length; k++) {
+                        if (dist(headA, snakeB.body[k]) < SEGMENT_RADIUS * 1.1) {
+                            deadSnakes.push(i);
+                            break;
+                        }
+                    }
+                    if (deadSnakes.includes(i)) break;
+                }
+            }
+
+            deadSnakes = [...new Set(deadSnakes)].sort((a, b) => b - a);
+
+            for (let deadIndex of deadSnakes) {
+                let deadSnake = snakes[deadIndex];
+                // Tote Schlange erzeugt an jedem Körpersegment einen Punkt
+                for (let seg of deadSnake.body) {
+                    foods.push({
+                        x: seg.x,
+                        y: seg.y,
+                        size: FOOD_SIZE
+                    });
+                }
+
+                if (deadSnake.isAI) {
+                    snakes[deadIndex] = createAISnake(deadIndex);
+                } else {
+                    snakes[deadIndex] = createPlayerSnake();
+                }
+            }
+
+            // 4. Alle 2 Sekunden 3 neue Punkte zufällig erzeugen
+            if (timestamp - lastFoodSpawnTime > FOOD_SPAWN_INTERVAL) {
+                for (let i = 0; i < 3; i++) {
+                    spawnFood();
+                }
+                lastFoodSpawnTime = timestamp;
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Punkte cyan
+            for (let food of foods) {
+                ctx.fillStyle = 'cyan';
+                ctx.beginPath();
+                ctx.arc(food.x, food.y, food.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            for (let snake of snakes) {
+                ctx.fillStyle = snake.color;
+                for (let i = 0; i < snake.body.length; i++) {
+                    let seg = snake.body[i];
+                    ctx.beginPath();
+                    ctx.arc(seg.x, seg.y, SEGMENT_RADIUS, 0, Math.PI * 2);
+                    ctx.fill();
+                    if (i === 0) {
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = 'black';
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function loop(timestamp) {
+            update(timestamp);
+            draw();
+            requestAnimationFrame(loop);
+        }
+        loop();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Witz des Tages</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Dark Mode via prefers-color-scheme */
+        @media (prefers-color-scheme: dark) {
+            body:not(.light) {
+                background: linear-gradient(to right, #3730a3, #a21caf);
+            }
+
+            body:not(.light) .bg-white {
+                background-color: #23272f !important;
+                color: #f3f4f6;
+            }
+
+            body:not(.light) .text-indigo-700 {
+                color: #a5b4fc !important;
+            }
+
+            body:not(.light) .text-gray-800 {
+                color: #e5e7eb !important;
+            }
+        }
+
+        /* Light Mode override */
+        body.light {
+            background: linear-gradient(to right, #e0e7ff, #f3e8ff);
+        }
+
+        body.light .bg-white {
+            background-color: #fff !important;
+            color: #23272f;
+        }
+
+        body.light .text-indigo-700 {
+            color: #3730a3 !important;
+        }
+
+        body.light .text-gray-800 {
+            color: #23272f !important;
+        }
+
+        /* Dark Mode forced */
+        body.dark {
+            background: linear-gradient(to right, #3730a3, #a21caf);
+        }
+
+        body.dark .bg-white {
+            background-color: #23272f !important;
+            color: #f3f4f6;
+        }
+
+        body.dark .text-indigo-700 {
+            color: #a5b4fc !important;
+        }
+
+        body.dark .text-gray-800 {
+            color: #e5e7eb !important;
+        }
+    </style>
+</head>
+
+<body
+    class="bg-gradient-to-r from-indigo-100 to-purple-100 min-h-screen flex items-center justify-center p-4 transition-colors">
+
+    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-xl w-full text-center space-y-6">
+        <div class="flex justify-between items-center mb-2">
+            <h1 class="text-3xl font-bold text-indigo-700">Witz des Tages</h1>
+            <button id="toggle-dark" aria-label="Dark Mode umschalten"
+                class="ml-4 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full px-3 py-1 text-sm font-semibold shadow transition">
+                🌙
+            </button>
+        </div>
+        <div id="joke" class="text-lg text-gray-800 whitespace-pre-line">Witz wird geladen...</div>
+        <button id="joke-btn" onclick="fetchJoke()"
+            class="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-xl shadow-md transition">
+            Neuer Witz
+        </button>
+    </div>
+
+    <script>
+        async function fetchJoke() {
+            const jokeDiv = document.getElementById('joke');
+            jokeDiv.textContent = "Witz wird geladen...";
+            try {
+                const res = await fetch('https://v2.jokeapi.dev/joke/Any?lang=de');
+                const data = await res.json();
+                if (data.error) {
+                    jokeDiv.textContent = "Fehler beim Laden des Witzes.";
+                } else {
+                    const jokeText = data.type === "single" ? data.joke : `${data.setup}\n\n${data.delivery}`;
+                    jokeDiv.textContent = jokeText;
+                }
+            } catch (e) {
+                jokeDiv.textContent = "Netzwerkfehler beim Abrufen des Witzes.";
+            }
+        }
+
+        // Witz beim Laden der Seite holen
+        fetchJoke();
+
+        // Enter-Taste: Witz neu laden
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                fetchJoke();
+            }
+        });
+
+        // Dark Mode Umschalter
+        const toggleBtn = document.getElementById('toggle-dark');
+        function setMode(mode) {
+            document.body.classList.remove('light', 'dark');
+            if (mode === 'dark') {
+                document.body.classList.add('dark');
+                toggleBtn.textContent = '☀️';
+            } else if (mode === 'light') {
+                document.body.classList.add('light');
+                toggleBtn.textContent = '🌙';
+            } else {
+                // System default
+                if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    document.body.classList.add('dark');
+                    toggleBtn.textContent = '☀️';
+                } else {
+                    document.body.classList.add('light');
+                    toggleBtn.textContent = '🌙';
+                }
+            }
+        }
+        // Initial Mode
+        let mode = localStorage.getItem('color-mode') || 'system';
+        setMode(mode);
+
+        toggleBtn.addEventListener('click', () => {
+            let current = document.body.classList.contains('dark') ? 'dark' : 'light';
+            let newMode = current === 'dark' ? 'light' : 'dark';
+            setMode(newMode);
+            localStorage.setItem('color-mode', newMode);
+        });
+
+        // System theme change listener
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+            if (!localStorage.getItem('color-mode')) setMode('system');
+        });
+    </script>
+
+</body>
+
+</html>
