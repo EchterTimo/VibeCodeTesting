@@ -466,44 +466,72 @@
         function updateEnemyAI(e) {
             if (!e.alive) return;
 
-            // Patrol logic
-            e.ai.patrolTimer--;
-            if (e.ai.patrolTimer <= 0) {
-                e.ai.patrolAngle = Math.random() * Math.PI * 2;
-                e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
-            }
+            // Abstand zum Spieler berechnen
+            const dx = player.x - e.x;
+            const dy = player.y - e.y;
+            const dist = Math.hypot(dx, dy);
 
-            let targetAngle = e.ai.patrolAngle;
-            let seesPlayer = false;
+            // Kollisionsvermeidung mit Spieler
+            if (dist < shipSize * 2) {
+                // Drehe vom Spieler weg und beschleunige rückwärts
+                const avoidAngle = Math.atan2(e.y - player.y, e.x - player.x);
+                e.angle += Math.sign(avoidAngle - e.angle) * Math.min(Math.abs(avoidAngle - e.angle), 0.05);
+                e.vx += Math.cos(e.angle) * 0.12;
+                e.vy += Math.sin(e.angle) * 0.12;
+            } else {
+                // Angriffsmuster
+                let targetAngle = e.ai.patrolAngle;
+                let seesPlayer = false;
 
-            // If player in sight, aim and shoot
-            if (player.alive && canSeePlayer(e)) {
-                const dx = player.x - e.x;
-                const dy = player.y - e.y;
-                targetAngle = Math.atan2(dy, dx);
-                seesPlayer = true;
-            }
+                // Wenn Spieler in Sichtweite, Angriff einleiten
+                if (player.alive && canSeePlayer(e)) {
+                    seesPlayer = true;
+                    // Wenn zu nah, neuen Anflugwinkel wählen (Kreis um Spieler)
+                    if (dist < 180) {
+                        // Wähle neuen Anflugwinkel, der vom Spieler wegführt
+                        e.ai.patrolAngle = Math.atan2(e.y - player.y, e.x - player.x) + (Math.random() - 0.5);
+                        e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
+                        targetAngle = e.ai.patrolAngle;
+                    } else {
+                        // Ziel auf Spieler ausrichten
+                        targetAngle = Math.atan2(dy, dx);
+                    }
+                } else {
+                    // Normales Patrouillieren
+                    e.ai.patrolTimer--;
+                    if (e.ai.patrolTimer <= 0) {
+                        e.ai.patrolAngle = Math.random() * Math.PI * 2;
+                        e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
+                    }
+                    targetAngle = e.ai.patrolAngle;
+                }
 
-            // Smoothly turn towards targetAngle
-            let da = targetAngle - e.angle;
-            while (da > Math.PI) da -= 2 * Math.PI;
-            while (da < -Math.PI) da += 2 * Math.PI;
-            e.angle += Math.sign(da) * Math.min(Math.abs(da), 0.03);
+                // Sanftes Drehen zum Zielwinkel
+                let da = targetAngle - e.angle;
+                while (da > Math.PI) da -= 2 * Math.PI;
+                while (da < -Math.PI) da += 2 * Math.PI;
+                e.angle += Math.sign(da) * Math.min(Math.abs(da), 0.04);
 
-            // Move forward
-            e.vx += Math.cos(e.angle) * 0.07;
-            e.vy += Math.sin(e.angle) * 0.07;
+                // Vorwärts bewegen (etwas schneller beim Angriff)
+                if (seesPlayer && dist > 180) {
+                    e.vx += Math.cos(e.angle) * 0.11;
+                    e.vy += Math.sin(e.angle) * 0.11;
+                } else {
+                    e.vx += Math.cos(e.angle) * 0.07;
+                    e.vy += Math.sin(e.angle) * 0.07;
+                }
 
-            // Shoot if sees player and cooldown is over
-            if (seesPlayer && !e.ai.shootCooldown) {
-                shoot(e);
-                e.ai.shootCooldown = enemyFireRate;
+                // Schießen, wenn Spieler im Visier und nicht zu nah
+                if (seesPlayer && dist > 160 && !e.ai.shootCooldown) {
+                    shoot(e);
+                    e.ai.shootCooldown = enemyFireRate;
+                }
             }
 
             // Cooldown
             if (e.ai.shootCooldown) e.ai.shootCooldown--;
 
-            // Movement and wall bounds (reuse player logic)
+            // Bewegung und Begrenzung
             e.x += e.vx;
             e.y += e.vy;
             e.vx *= 0.98;
