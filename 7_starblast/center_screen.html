@@ -89,7 +89,7 @@
         });
 
         // 1. Only one player
-        const player = makePlayer('green', { up: 'w', down: 's', left: 'a', right: 'd', shoot: ' ' }, 'Player');
+        const player = makePlayer('cyan', { up: 'w', down: 's', left: 'a', right: 'd', shoot: ' ' }, 'Player');
         const players = [player];
 
         // 2. World size (bigger than screen for camera movement)
@@ -788,7 +788,7 @@
         function makeFriendlyDrone(name) {
             return {
                 ...respawn(),
-                color: 'cyan',
+                color: 'green',
                 controls: {},
                 bullets: [],
                 name,
@@ -936,7 +936,7 @@
                 drawPlayer(d, cam);
             });
             // Drohnen-Bullets
-            ctx.fillStyle = 'cyan';
+            ctx.fillStyle = 'green';
             friendlyDrones.forEach(d => {
                 d.bullets.forEach(b => ctx.fillRect(b.x - 2 - cam.x, b.y - 2 - cam.y, 4, 4));
             });
