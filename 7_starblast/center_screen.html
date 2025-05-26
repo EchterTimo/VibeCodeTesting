@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Starblast Clone</title>
+    <title>Space Game</title>
     <style>
         html,
         body {
@@ -60,7 +60,7 @@
         const bulletSpeed = 5;
         const shieldDuration = 20; // frames shield is visible after hit
         const maxShield = 100;
-        const maxHP = 50;
+        const maxHP = 100;
         const bulletDamage = 10; // Damage per bullet
         const fireRate = 10; // frames between shots (lower is faster)
 
@@ -145,11 +145,19 @@
 
         function drawPlayer(p, cam) {
             if (!p.alive) return;
-            // Draw shield if active or has shield points
-            if (p.shield > 0 || p.shieldFlash > 0) {
+            // Draw shield ONLY when recently hit (flash)
+            if (p.shieldFlash > 0) {
                 ctx.save();
-                ctx.globalAlpha = p.shieldFlash > 0 ? 0.7 : 0.3;
-                ctx.strokeStyle = p.shield > 0 ? 'aqua' : 'gray';
+                // Calculate shield intensity (always max when flashing)
+                let shieldAlpha = 0.8;
+                // Interpolate color based on current shield (optional)
+                let t = p.shield / maxShield;
+                const r = Math.round(80 + (128 - 80) * t);
+                const g = Math.round(80 + (255 - 80) * t);
+                const b = Math.round(80 + (255 - 80) * t);
+                let shieldColor = `rgb(${r},${g},${b})`;
+                ctx.globalAlpha = shieldAlpha;
+                ctx.strokeStyle = shieldColor;
                 ctx.lineWidth = 6;
                 ctx.beginPath();
                 ctx.arc(p.x - cam.x, p.y - cam.y, shipSize + 8, 0, Math.PI * 2);
