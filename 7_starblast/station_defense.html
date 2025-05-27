@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Space Station Defense</title>
+    <style>
+        canvas {
+            background: black;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const station = { x: canvas.width / 2, y: canvas.height / 2, radius: 30 };
+        let angle = 0;
+        const bullets = [];
+        const meteoroids = [];
+
+        document.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            angle = Math.atan2(mouseY - station.y, mouseX - station.x);
+        });
+
+        document.addEventListener('mousedown', shoot);
+        document.addEventListener('keydown', e => {
+            if (e.code === 'Space') shoot();
+        });
+
+        function shoot() {
+            bullets.push({
+                x: station.x,
+                y: station.y,
+                dx: Math.cos(angle) * 5,
+                dy: Math.sin(angle) * 5
+            });
+        }
+
+        function spawnMeteoroid() {
+            const edge = Math.floor(Math.random() * 4);
+            let x, y;
+            if (edge === 0) { // top
+                x = Math.random() * canvas.width;
+                y = 0;
+            } else if (edge === 1) { // right
+                x = canvas.width;
+                y = Math.random() * canvas.height;
+            } else if (edge === 2) { // bottom
+                x = Math.random() * canvas.width;
+                y = canvas.height;
+            } else { // left
+                x = 0;
+                y = Math.random() * canvas.height;
+            }
+            const dx = station.x - x;
+            const dy = station.y - y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            meteoroids.push({
+                x, y,
+                dx: dx / dist,
+                dy: dy / dist,
+                hp: Math.floor(Math.random() * 5) + 1
+            });
+        }
+
+        function update() {
+            // Update bullets
+            bullets.forEach(b => {
+                b.x += b.dx;
+                b.y += b.dy;
+            });
+
+            // Update meteoroids
+            meteoroids.forEach(m => {
+                m.x += m.dx * 1.5;
+                m.y += m.dy * 1.5;
+            });
+
+            // Collision detection
+            bullets.forEach((b, bi) => {
+                meteoroids.forEach((m, mi) => {
+                    const dx = b.x - m.x;
+                    const dy = b.y - m.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 10) {
+                        m.hp--;
+                        bullets.splice(bi, 1);
+                        if (m.hp <= 0) meteoroids.splice(mi, 1);
+                    }
+                });
+            });
+
+            // Remove off-screen bullets
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+                    bullets.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw station
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(station.x, station.y, station.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw turret
+            ctx.strokeStyle = 'red';
+            ctx.beginPath();
+            ctx.moveTo(station.x, station.y);
+            ctx.lineTo(station.x + Math.cos(angle) * 40, station.y + Math.sin(angle) * 40);
+            ctx.stroke();
+
+            // Draw bullets
+            ctx.fillStyle = 'yellow';
+            bullets.forEach(b => {
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw meteoroids
+            meteoroids.forEach(m => {
+                ctx.fillStyle = `rgba(150, 75, 0, ${0.2 + m.hp * 0.15})`;
+                ctx.beginPath();
+                ctx.arc(m.x, m.y, 10 + m.hp * 2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        setInterval(spawnMeteoroid, 1000);
+        loop();
+    </script>
+</body>
+
+</html>
