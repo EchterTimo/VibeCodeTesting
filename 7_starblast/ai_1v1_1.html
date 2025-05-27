@@ -197,6 +197,11 @@
         }
 
         update();
+
+        // Log the number of blasters every second
+        setInterval(() => {
+            console.log('Blasters count:', blasters.length);
+        }, 1000);
     </script>
 </body>
 
