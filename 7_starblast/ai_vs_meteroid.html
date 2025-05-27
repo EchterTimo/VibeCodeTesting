@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Space AI Simulation</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const MAP_WIDTH = 2000;
+        const MAP_HEIGHT = 2000;
+        const NUM_METEORS = 20;
+        const METEOR_RADIUS = 20;
+        const SHIP_SPEED = 2;
+        const SHIP_ROTATION_SPEED = 0.01;
+        const TURRET_ROTATION_SPEED = 0.1;
+        const BULLET_SPEED = 10;
+
+        function rand(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function distance(a, b) {
+            return Math.hypot(a.x - b.x, a.y - b.y);
+        }
+
+        function angleTo(a, b) {
+            return Math.atan2(b.y - a.y, b.x - a.x);
+        }
+
+        class Meteor {
+            constructor() {
+                this.x = rand(0, MAP_WIDTH);
+                this.y = rand(0, MAP_HEIGHT);
+                const angle = rand(0, Math.PI * 2);
+                this.vx = Math.cos(angle) * 1;
+                this.vy = Math.sin(angle) * 1;
+                this.hp = Math.floor(rand(1, 4));
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < 0 || this.x > MAP_WIDTH || this.y < 0 || this.y > MAP_HEIGHT) {
+                    this.x = rand(0, MAP_WIDTH);
+                    this.y = rand(0, MAP_HEIGHT);
+                }
+            }
+
+            draw() {
+                if (this.hp <= 0) return;
+                ctx.beginPath();
+                ctx.fillStyle = 'gray';
+                ctx.arc(this.x, this.y, METEOR_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw HP
+                ctx.fillStyle = 'white';
+                ctx.font = '12px Arial';
+                ctx.fillText(this.hp, this.x - 4, this.y + 4);
+            }
+        }
+
+        class Bullet {
+            constructor(x, y, angle) {
+                this.x = x;
+                this.y = y;
+                this.vx = Math.cos(angle) * BULLET_SPEED;
+                this.vy = Math.sin(angle) * BULLET_SPEED;
+                this.alive = true;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.strokeStyle = 'yellow';
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x - this.vx, this.y - this.vy);
+                ctx.stroke();
+            }
+        }
+
+        class Ship {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.angle = 0;
+                this.turretAngle = 0;
+                this.bullets = [];
+                this.alive = true;
+            }
+
+            update(meteors) {
+                if (!this.alive) return;
+
+                const aliveMeteors = meteors.filter(m => m.hp > 0);
+                if (aliveMeteors.length === 0) return;
+
+                // Move toward nearest meteor
+                let target = aliveMeteors.reduce((closest, m) => {
+                    return distance(this, m) < distance(this, closest) ? m : closest;
+                }, aliveMeteors[0]);
+
+                const targetAngle = angleTo(this, target);
+                const angleDiff = ((targetAngle - this.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+                this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), SHIP_ROTATION_SPEED);
+
+                // Move ship
+                this.x += Math.cos(this.angle) * SHIP_SPEED;
+                this.y += Math.sin(this.angle) * SHIP_SPEED;
+
+                // Turret AI
+                const turretDiff = ((angleTo(this, target) - this.turretAngle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+                this.turretAngle += Math.sign(turretDiff) * Math.min(Math.abs(turretDiff), TURRET_ROTATION_SPEED);
+
+                // Shoot
+                if (Math.abs(turretDiff) < 0.1) {
+                    this.bullets.push(new Bullet(this.x, this.y, this.turretAngle));
+                }
+
+                // Update bullets and check collisions
+                for (const bullet of this.bullets) {
+                    bullet.update();
+                    for (const meteor of meteors) {
+                        if (meteor.hp > 0 && distance(bullet, meteor) < METEOR_RADIUS) {
+                            meteor.hp = 0; // Kill meteor instantly
+                            bullet.alive = false;
+                            break;
+                        }
+                    }
+                }
+                this.bullets = this.bullets.filter(b => b.alive);
+
+                // Check ship collision
+                for (const meteor of meteors) {
+                    if (meteor.hp > 0 && distance(this, meteor) < METEOR_RADIUS + 10) {
+                        this.alive = false;
+                    }
+                }
+            }
+
+            draw() {
+                if (!this.alive) return;
+                // Draw ship body
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.moveTo(20, 0);
+                ctx.lineTo(-20, -10);
+                ctx.lineTo(-20, 10);
+                ctx.closePath();
+                ctx.fill();
+
+                // Draw turret
+                ctx.rotate(this.turretAngle - this.angle);
+                ctx.strokeStyle = 'red';
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(30, 0);
+                ctx.stroke();
+                ctx.restore();
+
+                // Draw bullets
+                this.bullets.forEach(b => b.draw());
+            }
+        }
+
+        const meteors = Array.from({ length: NUM_METEORS }, () => new Meteor());
+        const ship = new Ship();
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Simulate camera centered on ship
+            const offsetX = ship.x - canvas.width / 2;
+            const offsetY = ship.y - canvas.height / 2;
+            ctx.save();
+            ctx.translate(-offsetX, -offsetY);
+
+            meteors.forEach(m => {
+                m.update();
+                m.draw();
+            });
+            ship.update(meteors);
+            ship.draw();
+
+            ctx.restore();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+
+</html>
