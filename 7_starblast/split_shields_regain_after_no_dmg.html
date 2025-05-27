@@ -171,8 +171,8 @@
 
         function updatePlayer(p) {
             if (!p.alive) return;
-            if (keys[p.controls.left]) p.angle -= 0.025;
-            if (keys[p.controls.right]) p.angle += 0.025;
+            if (keys[p.controls.left]) p.angle -= 0.05;
+            if (keys[p.controls.right]) p.angle += 0.05;
             if (keys[p.controls.up]) {
                 p.vx += Math.cos(p.angle) * 0.1;
                 p.vy += Math.sin(p.angle) * 0.1;
