@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Top-Down Racing Game</title>
+    <style>
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: #333;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const mapWidth = canvas.width;
+        const mapHeight = canvas.height;
+
+        const keys = {
+            w: false,
+            a: false,
+            d: false
+        };
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = false;
+        });
+
+        const player = {
+            x: 400,
+            y: 300,
+            angle: 0,
+            speed: 0,
+            maxSpeed: 3,
+            width: 20,
+            height: 40
+        };
+
+        function drawMap() {
+            // Grass background
+            ctx.fillStyle = '#0a0';
+            ctx.fillRect(0, 0, mapWidth, mapHeight);
+
+            // Road (simple layout)
+            ctx.fillStyle = '#555';
+            ctx.fillRect(300, 0, 200, mapHeight);
+        }
+
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.rotate(player.angle);
+            ctx.fillStyle = 'red';
+            ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
+            ctx.restore();
+        }
+
+        function updatePlayer() {
+            if (keys.w) {
+                player.speed = player.maxSpeed;
+            } else {
+                player.speed *= 0.95; // Friction
+            }
+
+            if (keys.a) {
+                player.angle -= 0.05;
+            }
+            if (keys.d) {
+                player.angle += 0.05;
+            }
+
+            player.x += Math.sin(player.angle) * player.speed;
+            player.y -= Math.cos(player.angle) * player.speed;
+        }
+
+        function gameLoop() {
+            drawMap();
+            updatePlayer();
+            drawPlayer();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+
+</html>
