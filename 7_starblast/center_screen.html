@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Space Game</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #222222;
+            height: 100%;
+            width: 100%;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        canvas {
+            background: black;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="game"></canvas>
+    <script>
+
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+
+        // detect smartphone and make popup to switch to pc
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            alert("You need a keyboard to play this game. Please switch to a PC or laptop for the best experience.");
+        }
+
+        const keys = {};
+        document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        const shipSize = 30;
+        const bulletSpeed = 5;
+        const shieldDuration = 20; // frames shield is visible after hit
+        const maxShield = 100;
+        const maxHP = 100;
+        const bulletDamage = 10; // Damage per bullet
+        const fireRate = 10; // frames between shots (lower is faster)
+
+        // Add lastDamageTime and shieldRegenTimer to player state
+        const respawn = () => ({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            angle: Math.random() * Math.PI * 2,
+            vx: 0,
+            vy: 0,
+            alive: true,
+            shield: maxShield,
+            shieldFlash: 0,
+            hp: maxHP,
+            name: '',
+            lastDamageTime: Date.now(),
+            shieldRegenTimer: 0
+        });
+
+        const makePlayer = (color, controls, name) => ({
+            ...respawn(),
+            color,
+            controls,
+            bullets: [],
+            name
+        });
+
+        // 1. Only one player
+        const player = makePlayer('cyan', { up: 'w', down: 's', left: 'a', right: 'd', shoot: ' ' }, 'Player');
+        const players = [player];
+
+        // 2. World size (bigger than screen for camera movement)
+        const worldWidth = 4000;
+        const worldHeight = 4000;
+
+        // 3. Camera logic: always center on player
+        function getCameraOffset() {
+            return {
+                x: player.x - canvas.width / 2,
+                y: player.y - canvas.height / 2
+            };
+        }
+
+        // 4. Update drawStatBar and drawPlayer to use camera offset
+        function drawStatBar(p, cam) {
+            const barWidth = 50;
+            const barHeight = 6;
+            const barSpacing = 8;
+            const x = p.x - barWidth / 2 - cam.x;
+            const y = p.y - shipSize - 24 - cam.y;
+
+            ctx.save();
+            ctx.font = "12px Arial";
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#fff";
+            ctx.fillText(p.name, p.x - cam.x, y - 8);
+
+            // Shield bar (blue)
+            ctx.strokeStyle = "#00f";
+            ctx.strokeRect(x, y, barWidth, barHeight);
+            ctx.fillStyle = "#00f";
+            ctx.globalAlpha = 0.7;
+            ctx.fillRect(x, y, barWidth * (p.shield / maxShield), barHeight);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = "#00f";
+            ctx.textAlign = "left";
+            ctx.fillText(`${p.shield}/${maxShield}`, x + barWidth + 18, y + barHeight);
+
+            // HP bar (red)
+            ctx.strokeStyle = "#f00";
+            ctx.strokeRect(x, y + barHeight + barSpacing, barWidth, barHeight);
+            ctx.fillStyle = "#f00";
+            ctx.globalAlpha = 0.7;
+            ctx.fillRect(x, y + barHeight + barSpacing, barWidth * (p.hp / maxHP), barHeight);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = "#f00";
+            ctx.textAlign = "left";
+            ctx.fillText(`${p.hp}/${maxHP}`, x + barWidth + 18, y + barHeight + barSpacing + barHeight);
+
+            ctx.restore();
+        }
+
+        function drawPlayer(p, cam) {
+            if (!p.alive) return;
+            // Draw shield ONLY when recently hit (flash)
+            if (p.shieldFlash > 0) {
+                ctx.save();
+                // Calculate shield intensity (always max when flashing)
+                let shieldAlpha = 0.8;
+                // Interpolate color based on current shield (optional)
+                let t = p.shield / maxShield;
+                const r = Math.round(80 + (128 - 80) * t);
+                const g = Math.round(80 + (255 - 80) * t);
+                const b = Math.round(80 + (255 - 80) * t);
+                let shieldColor = `rgb(${r},${g},${b})`;
+                ctx.globalAlpha = shieldAlpha;
+                ctx.strokeStyle = shieldColor;
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.arc(p.x - cam.x, p.y - cam.y, shipSize + 8, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // Ship
+            ctx.save();
+            ctx.translate(p.x - cam.x, p.y - cam.y);
+            ctx.rotate(p.angle);
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.moveTo(shipSize, 0);
+            ctx.lineTo(-shipSize / 2, -shipSize / 2);
+            ctx.lineTo(-shipSize / 2, shipSize / 2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            // Stat bar
+            drawStatBar(p, cam);
+        }
+
+        // 5. Update updateBullets to not require enemy
+        function updateBullets(p) {
+            p.bullets.forEach(b => {
+                b.x += b.dx;
+                b.y += b.dy;
+            });
+            p.bullets = p.bullets.filter(b =>
+                b.x >= 0 && b.x <= worldWidth && b.y >= 0 && b.y <= worldHeight
+            );
+        }
+
+        // 6. World wrap für Spieler ENTFERNT, stattdessen Begrenzung:
+        function updatePlayer(p) {
+            if (!p.alive) return;
+            if (keys[p.controls.left]) p.angle -= 0.025;
+            if (keys[p.controls.right]) p.angle += 0.025;
+            if (keys[p.controls.up]) {
+                p.vx += Math.cos(p.angle) * 0.1;
+                p.vy += Math.sin(p.angle) * 0.1;
+            }
+            // Rückwärts fahren mit "down"
+            if (keys[p.controls.down]) {
+                p.vx -= Math.cos(p.angle) * 0.07;
+                p.vy -= Math.sin(p.angle) * 0.07;
+            }
+            if (keys[p.controls.shoot] && !p.shootCooldown) {
+                shoot(p);
+                p.shootCooldown = fireRate;
+            }
+
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= 0.98;
+            p.vy *= 0.98;
+
+            // Begrenzung an den Wänden
+            if (p.x < 0) { p.x = 0; p.vx = 0; }
+            if (p.x > worldWidth) { p.x = worldWidth; p.vx = 0; }
+            if (p.y < 0) { p.y = 0; p.vy = 0; }
+            if (p.y > worldHeight) { p.y = worldHeight; p.vy = 0; }
+
+            if (p.shootCooldown) p.shootCooldown--;
+
+            if (p.shieldFlash > 0) p.shieldFlash--;
+        }
+
+        // 7. Draw world background grid for effect
+        function drawWorldGrid(cam) {
+            ctx.save();
+            ctx.strokeStyle = "#333";
+            ctx.lineWidth = 1;
+            for (let x = 0; x < worldWidth; x += 100) {
+                ctx.beginPath();
+                ctx.moveTo(x - cam.x, -cam.y);
+                ctx.lineTo(x - cam.x, worldHeight - cam.y);
+                ctx.stroke();
+            }
+            for (let y = 0; y < worldHeight; y += 100) {
+                ctx.beginPath();
+                ctx.moveTo(-cam.x, y - cam.y);
+                ctx.lineTo(worldWidth - cam.x, y - cam.y);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        // Asteroiden-Konstanten
+        const asteroidCount = 30;
+        const asteroidMinSize = 30;
+        const asteroidMaxSize = 200;
+        const asteroidMinSpeed = 0.5;
+        const asteroidMaxSpeed = 2;
+
+        // Asteroiden-Array
+        const asteroids = [];
+
+        // Hilfsfunktion für zufällige Position außerhalb des Spieler-Spawns
+        function randomAsteroidPosition() {
+            let x, y;
+            do {
+                x = Math.random() * worldWidth;
+                y = Math.random() * worldHeight;
+                // Nicht zu nah am Spieler spawnen
+            } while (Math.hypot(x - player.x, y - player.y) < 200);
+            return { x, y };
+        }
+
+        // Asteroiden initialisieren
+        for (let i = 0; i < asteroidCount; i++) {
+            const { x, y } = randomAsteroidPosition();
+            const angle = Math.random() * Math.PI * 2;
+            const speed = asteroidMinSpeed + Math.random() * (asteroidMaxSpeed - asteroidMinSpeed);
+            const radius = asteroidMinSize + Math.random() * (asteroidMaxSize - asteroidMinSize);
+            asteroids.push({
+                x,
+                y,
+                radius,
+                dx: Math.cos(angle) * speed,
+                dy: Math.sin(angle) * speed,
+                hp: Math.round(radius * 0.7), // HP abhängig von Größe
+                maxHp: Math.round(radius * 0.7), // Für Balken
+                showHp: false,
+                showHpTimer: 0
+            });
+        }
+
+        // Asteroiden bewegen und an Wänden abprallen mit Zufallswinkel
+        function updateAsteroids() {
+            asteroids.forEach(a => {
+                a.x += a.dx;
+                a.y += a.dy;
+
+                let bounced = false;
+
+                // Linke/rechte Wand
+                if (a.x - a.radius < 0) {
+                    a.x = a.radius;
+                    bounced = true;
+                }
+                if (a.x + a.radius > worldWidth) {
+                    a.x = worldWidth - a.radius;
+                    bounced = true;
+                }
+                // Oben/unten
+                if (a.y - a.radius < 0) {
+                    a.y = a.radius;
+                    bounced = true;
+                }
+                if (a.y + a.radius > worldHeight) {
+                    a.y = worldHeight - a.radius;
+                    bounced = true;
+                }
+
+                if (bounced) {
+                    // Zufälliger Winkel zwischen 0 und 90 Grad (in Radiant)
+                    const angle = Math.random() * (Math.PI / 2);
+                    // Zufällig entscheiden, ob X- oder Y-Richtung invertiert wird
+                    const speed = Math.sqrt(a.dx * a.dx + a.dy * a.dy);
+                    // Neue Richtung berechnen
+                    const signX = Math.random() < 0.5 ? 1 : -1;
+                    const signY = Math.random() < 0.5 ? 1 : -1;
+                    a.dx = Math.cos(angle) * speed * signX;
+                    a.dy = Math.sin(angle) * speed * signY;
+                }
+            });
+        }
+
+        // Asteroiden zeichnen (mit HP-Leiste falls showHp aktiv)
+        function drawAsteroids(cam) {
+            ctx.save();
+            ctx.strokeStyle = "#888";
+            ctx.fillStyle = "#444";
+            asteroids.forEach(a => {
+                ctx.beginPath();
+                ctx.arc(a.x - cam.x, a.y - cam.y, a.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // HP-Leiste nur anzeigen, wenn showHp aktiv
+                if (a.showHp) {
+                    const barWidth = 50;
+                    const barHeight = 6;
+                    const x = a.x - barWidth / 2 - cam.x;
+                    const y = a.y - a.radius - 18 - cam.y;
+                    ctx.save();
+                    ctx.globalAlpha = 0.85;
+                    ctx.strokeStyle = "#fff";
+                    ctx.strokeRect(x, y, barWidth, barHeight);
+                    ctx.fillStyle = "#0f0";
+                    ctx.fillRect(x, y, barWidth * (a.hp / a.maxHp), barHeight);
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+                }
+            });
+            ctx.restore();
+        }
+
+        // Kollision Spieler <-> Asteroid
+        function checkAsteroidCollisions() {
+            if (player.alive) {
+                asteroids.forEach(a => {
+                    const dist = Math.hypot(player.x - a.x, player.y - a.y);
+                    if (dist < shipSize + a.radius) {
+                        // Schaden abhängig von Asteroiden-Größe
+                        let damage = Math.round(a.radius * 0.5);
+                        if (player.shield > 0) {
+                            const shieldDamage = Math.min(player.shield, damage);
+                            player.shield -= shieldDamage;
+                            damage -= shieldDamage;
+                        }
+                        if (damage > 0) {
+                            player.hp -= damage;
+                        }
+                        player.shieldFlash = shieldDuration;
+                        player.lastDamageTime = Date.now();
+
+                        // Asteroid an neue Position setzen
+                        const { x, y } = randomAsteroidPosition();
+                        a.x = x;
+                        a.y = y;
+
+                        // Spieler tot?
+                        if (player.hp <= 0) {
+                            player.alive = false;
+                            setTimeout(() => {
+                                Object.assign(player, respawn());
+                                player.alive = true;
+                            }, 1500);
+                        }
+                    }
+                });
+            }
+
+            // NEU: Gegner-Kollisionen mit Asteroiden
+            enemies.forEach(e => {
+                if (!e.alive) return;
+                asteroids.forEach(a => {
+                    const dist = Math.hypot(e.x - a.x, e.y - a.y);
+                    if (dist < shipSize + a.radius) {
+                        // Schaden abhängig von Asteroiden-Größe
+                        let damage = Math.round(a.radius * 0.5);
+                        if (e.shield > 0) {
+                            const shieldDamage = Math.min(e.shield, damage);
+                            e.shield -= shieldDamage;
+                            damage -= shieldDamage;
+                        }
+                        if (damage > 0) {
+                            e.hp -= damage;
+                        }
+                        e.shieldFlash = shieldDuration;
+                        e.lastDamageTime = Date.now();
+
+                        // Asteroid an neue Position setzen
+                        const { x, y } = randomAsteroidPosition();
+                        a.x = x;
+                        a.y = y;
+
+                        // Gegner tot?
+                        if (e.hp <= 0) {
+                            e.alive = false;
+                            setTimeout(() => {
+                                Object.assign(e, respawn());
+                                e.alive = true;
+                            }, 1500);
+                        }
+                    }
+                });
+            });
+        }
+
+        // Bullets treffen Asteroiden
+        function checkBulletAsteroidCollisions() {
+            player.bullets.forEach(bullet => {
+                asteroids.forEach(a => {
+                    const dist = Math.hypot(bullet.x - a.x, bullet.y - a.y);
+                    if (dist < a.radius) {
+                        // Asteroid Schaden abhängig von Größe (größere = weniger Schaden)
+                        const scaledDamage = Math.max(5, Math.round(bulletDamage * (asteroidMinSize / a.radius)));
+                        a.hp -= scaledDamage;
+                        a.showHp = true;
+                        a.showHpTimer = 60; // ca. 1 Sekunde sichtbar
+                        // Bullet entfernen
+                        bullet._hit = true;
+                    }
+                });
+            });
+            // Entferne getroffene Bullets
+            player.bullets = player.bullets.filter(b => !b._hit);
+            // Entferne zerstörte Asteroiden (optional: respawnen)
+            asteroids.forEach((a, i) => {
+                if (a.hp <= 0) {
+                    // Respawn an neuer Position
+                    const { x, y } = randomAsteroidPosition();
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = asteroidMinSpeed + Math.random() * (asteroidMaxSpeed - asteroidMinSpeed);
+                    const radius = asteroidMinSize + Math.random() * (asteroidMaxSize - asteroidMinSize);
+                    asteroids[i] = {
+                        x,
+                        y,
+                        radius,
+                        dx: Math.cos(angle) * speed,
+                        dy: Math.sin(angle) * speed,
+                        hp: Math.round(radius * 0.7),
+                        maxHp: Math.round(radius * 0.7),
+                        showHp: false,
+                        showHpTimer: 0
+                    };
+                }
+            });
+        }
+
+        // Asteroiden-HP-Leiste Timer aktualisieren
+        function updateAsteroidHpBars() {
+            asteroids.forEach(a => {
+                if (a.showHp) {
+                    a.showHpTimer--;
+                    if (a.showHpTimer <= 0) {
+                        a.showHp = false;
+                    }
+                }
+            });
+        }
+
+        // --- ENEMY AI ---
+
+        const enemyCount = 3;
+        const enemies = [];
+        const enemyFireRate = 20; // slower than player
+        const enemySightRange = 500;
+        const enemyPatrolChangeInterval = 120; // frames
+
+        function makeEnemy(name) {
+            return {
+                ...respawn(),
+                color: 'red',
+                controls: {}, // not used
+                bullets: [],
+                name,
+                ai: {
+                    patrolAngle: Math.random() * Math.PI * 2,
+                    patrolTimer: Math.floor(Math.random() * enemyPatrolChangeInterval),
+                    shootCooldown: 0
+                }
+            };
+        }
+
+        // Spawn enemies
+        for (let i = 0; i < enemyCount; i++) {
+            enemies.push(makeEnemy('Enemy ' + (i + 1)));
+        }
+
+        // Helper: Line of sight (ignores asteroids for simplicity, can be improved)
+        function canSeePlayer(enemy) {
+            const dx = player.x - enemy.x;
+            const dy = player.y - enemy.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist > enemySightRange) return false;
+            // Optional: Add asteroid blocking check here
+            return true;
+        }
+
+        function updateEnemyAI(e) {
+            if (!e.alive) return;
+
+            // Zielauswahl: Spieler bevorzugen, sonst nächste freundliche Drohne
+            let target = null;
+            let dx, dy, dist;
+
+            // 1. Spieler in Reichweite?
+            dx = player.x - e.x;
+            dy = player.y - e.y;
+            dist = Math.hypot(dx, dy);
+            if (player.alive && dist <= enemySightRange) {
+                target = player;
+            } else {
+                // 2. Nächste freundliche Drohne in Reichweite suchen
+                let closestDrone = null;
+                let closestDist = Infinity;
+                friendlyDrones.forEach(d => {
+                    if (!d.alive) return;
+                    const ddx = d.x - e.x;
+                    const ddy = d.y - e.y;
+                    const ddist = Math.hypot(ddx, ddy);
+                    if (ddist < enemySightRange && ddist < closestDist) {
+                        closestDrone = d;
+                        closestDist = ddist;
+                    }
+                });
+                if (closestDrone) {
+                    target = closestDrone;
+                    dx = target.x - e.x;
+                    dy = target.y - e.y;
+                    dist = Math.hypot(dx, dy);
+                }
+            }
+
+            // Kollisionsvermeidung mit Ziel (nur falls Ziel existiert)
+            if (target && dist < shipSize * 2) {
+                // Drehe vom Ziel weg und beschleunige rückwärts
+                const avoidAngle = Math.atan2(e.y - target.y, e.x - target.x);
+                e.angle += Math.sign(avoidAngle - e.angle) * Math.min(Math.abs(avoidAngle - e.angle), 0.05);
+                e.vx += Math.cos(e.angle) * 0.12;
+                e.vy += Math.sin(e.angle) * 0.12;
+            } else if (target) {
+                // Angriffsmuster auf Ziel
+                let targetAngle = e.ai.patrolAngle;
+
+                // Wenn zu nah, neuen Anflugwinkel wählen (Kreis um Ziel)
+                if (dist < 180) {
+                    e.ai.patrolAngle = Math.atan2(e.y - target.y, e.x - target.x) + (Math.random() - 0.5);
+                    e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
+                    targetAngle = e.ai.patrolAngle;
+                } else {
+                    // Ziel auf Target ausrichten
+                    targetAngle = Math.atan2(dy, dx);
+                }
+
+                // Sanftes Drehen zum Zielwinkel
+                let da = targetAngle - e.angle;
+                while (da > Math.PI) da -= 2 * Math.PI;
+                while (da < -Math.PI) da += 2 * Math.PI;
+                e.angle += Math.sign(da) * Math.min(Math.abs(da), 0.04);
+
+                // Vorwärts bewegen (etwas schneller beim Angriff)
+                if (dist > 180) {
+                    e.vx += Math.cos(e.angle) * 0.11;
+                    e.vy += Math.sin(e.angle) * 0.11;
+                } else {
+                    e.vx += Math.cos(e.angle) * 0.07;
+                    e.vy += Math.sin(e.angle) * 0.07;
+                }
+
+                // Schießen, wenn Ziel im Visier und nicht zu nah
+                if (dist > 160 && !e.ai.shootCooldown) {
+                    shoot(e);
+                    e.ai.shootCooldown = enemyFireRate;
+                }
+            } else {
+                // Kein Ziel: Patrouillieren wie bisher
+                e.ai.patrolTimer--;
+                if (e.ai.patrolTimer <= 0) {
+                    e.ai.patrolAngle = Math.random() * Math.PI * 2;
+                    e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
+                }
+                let targetAngle = e.ai.patrolAngle;
+                let da = targetAngle - e.angle;
+                while (da > Math.PI) da -= 2 * Math.PI;
+                while (da < -Math.PI) da += 2 * Math.PI;
+                e.angle += Math.sign(da) * Math.min(Math.abs(da), 0.04);
+
+                e.vx += Math.cos(e.angle) * 0.07;
+                e.vy += Math.sin(e.angle) * 0.07;
+            }
+
+            // Cooldown
+            if (e.ai.shootCooldown) e.ai.shootCooldown--;
+
+            // Bewegung und Begrenzung
+            e.x += e.vx;
+            e.y += e.vy;
+            e.vx *= 0.98;
+            e.vy *= 0.98;
+
+            // Wandkollision vermeiden: Wenn zu nah an der Wand, Kurs zur Kartenmitte setzen
+            let wallMargin = shipSize + 10;
+            let bounced = false;
+            if (e.x < wallMargin) {
+                e.x = wallMargin;
+                bounced = true;
+            }
+            if (e.x > worldWidth - wallMargin) {
+                e.x = worldWidth - wallMargin;
+                bounced = true;
+            }
+            if (e.y < wallMargin) {
+                e.y = wallMargin;
+                bounced = true;
+            }
+            if (e.y > worldHeight - wallMargin) {
+                e.y = worldHeight - wallMargin;
+                bounced = true;
+            }
+            if (bounced) {
+                // Kurs zur Kartenmitte setzen
+                const centerX = worldWidth / 2;
+                const centerY = worldHeight / 2;
+                const toCenter = Math.atan2(centerY - e.y, centerX - e.x);
+                e.angle += Math.sign(toCenter - e.angle) * Math.min(Math.abs(toCenter - e.angle), 0.1);
+                e.vx += Math.cos(toCenter) * 0.2;
+                e.vy += Math.sin(toCenter) * 0.2;
+                e.ai.patrolAngle = toCenter;
+                e.ai.patrolTimer = enemyPatrolChangeInterval + Math.floor(Math.random() * 60);
+            }
+
+            if (e.shootCooldown) e.shootCooldown--;
+            if (e.shieldFlash > 0) e.shieldFlash--;
+        }
+
+        // Update all enemies
+        function updateEnemies() {
+            enemies.forEach(updateEnemyAI);
+            enemies.forEach(updateBullets);
+        }
+
+        // Draw all enemies
+        function drawEnemies(cam) {
+            enemies.forEach(e => {
+                // Sichtweite visualisieren
+                if (e.alive) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.08; // sehr leichtes Grau
+                    ctx.beginPath();
+                    ctx.arc(e.x - cam.x, e.y - cam.y, enemySightRange, 0, Math.PI * 2);
+                    ctx.fillStyle = "#aaa";
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+                }
+                drawPlayer(e, cam);
+            });
+            // Draw enemy bullets
+            ctx.fillStyle = 'red';
+            enemies.forEach(e => {
+                e.bullets.forEach(b => ctx.fillRect(b.x - 2 - cam.x, b.y - 2 - cam.y, 4, 4));
+            });
+        }
+
+        // Enemy bullets hit player
+        function checkEnemyBulletHits() {
+            enemies.forEach(e => {
+                e.bullets.forEach(bullet => {
+                    if (!player.alive) return;
+                    const dist = Math.hypot(bullet.x - player.x, bullet.y - player.y);
+                    if (dist < shipSize) {
+                        // Damage
+                        let damage = bulletDamage;
+                        if (player.shield > 0) {
+                            const shieldDamage = Math.min(player.shield, damage);
+                            player.shield -= shieldDamage;
+                            damage -= shieldDamage;
+                        }
+                        if (damage > 0) {
+                            player.hp -= damage;
+                        }
+                        player.shieldFlash = shieldDuration;
+                        player.lastDamageTime = Date.now();
+                        bullet._hit = true;
+
+                        if (player.hp <= 0) {
+                            player.alive = false;
+                            setTimeout(() => {
+                                Object.assign(player, respawn());
+                                player.alive = true;
+                            }, 1500);
+                        }
+                    }
+                });
+                // Remove hit bullets
+                e.bullets = e.bullets.filter(b => !b._hit);
+            });
+        }
+
+        // Player bullets hit enemies
+        function checkPlayerBulletHits() {
+            player.bullets.forEach(bullet => {
+                enemies.forEach(e => {
+                    if (!e.alive) return;
+                    const dist = Math.hypot(bullet.x - e.x, bullet.y - e.y);
+                    if (dist < shipSize) {
+                        // Damage
+                        let damage = bulletDamage;
+                        if (e.shield > 0) {
+                            const shieldDamage = Math.min(e.shield, damage);
+                            e.shield -= shieldDamage;
+                            damage -= shieldDamage;
+                        }
+                        if (damage > 0) {
+                            e.hp -= damage;
+                        }
+                        e.shieldFlash = shieldDuration;
+                        e.lastDamageTime = Date.now();
+                        bullet._hit = true;
+
+                        if (e.hp <= 0) {
+                            e.alive = false;
+                            setTimeout(() => {
+                                Object.assign(e, respawn());
+                                e.alive = true;
+                            }, 1500);
+                        }
+                    }
+                });
+            });
+            // Remove hit bullets
+            player.bullets = player.bullets.filter(b => !b._hit);
+        }
+
+        // Enemy shield regen
+        function updateEnemyShieldRegen() {
+            const now = Date.now();
+            enemies.forEach(e => {
+                if (e.alive && e.shield < maxShield) {
+                    if (now - (e.lastDamageTime || 0) > 3000) {
+                        if (!e.shieldRegenTimer) e.shieldRegenTimer = now;
+                        if (now - e.shieldRegenTimer >= 100) {
+                            e.shield += 1;
+                            e.shield = Math.min(e.shield, maxShield);
+                            e.shieldRegenTimer += 100;
+                        }
+                    } else {
+                        e.shieldRegenTimer = 0;
+                    }
+                }
+            });
+        }
+
+        // --- FRIENDLY DRONES ---
+
+        const friendlyDroneCount = 1;
+        const friendlyDrones = [];
+        const friendlyDroneSightRange = 600;
+        const friendlyDroneFireRate = 16;
+
+        function makeFriendlyDrone(name) {
+            return {
+                ...respawn(),
+                color: 'green',
+                controls: {},
+                bullets: [],
+                name,
+                ai: {
+                    targetEnemy: null,
+                    shootCooldown: 0
+                }
+            };
+        }
+
+        // Spawn friendly drones
+        for (let i = 0; i < friendlyDroneCount; i++) {
+            friendlyDrones.push(makeFriendlyDrone('Wingman ' + (i + 1)));
+        }
+
+        function updateFriendlyDroneAI(d) {
+            if (!d.alive) return;
+
+            // Ziel: Feind in Sichtweite suchen
+            let closestEnemy = null;
+            let closestDist = Infinity;
+            enemies.forEach(e => {
+                if (!e.alive) return;
+                const dx = e.x - d.x;
+                const dy = e.y - d.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < friendlyDroneSightRange && dist < closestDist) {
+                    closestEnemy = e;
+                    closestDist = dist;
+                }
+            });
+
+            if (closestEnemy) {
+                d.ai.targetEnemy = closestEnemy;
+            } else {
+                d.ai.targetEnemy = null;
+            }
+
+            // Zielposition bestimmen
+            let targetX, targetY;
+            let followPlayer = false;
+            let distToPlayer = Math.hypot(player.x - d.x, player.y - d.y);
+
+            if (d.ai.targetEnemy) {
+                targetX = d.ai.targetEnemy.x;
+                targetY = d.ai.targetEnemy.y;
+            } else {
+                // Folge dem Spieler, aber halte Abstand
+                if (distToPlayer > 80) {
+                    targetX = player.x;
+                    targetY = player.y;
+                    followPlayer = true;
+                } else {
+                    // Bleib in der Nähe, aber nicht zu nah
+                    targetX = d.x;
+                    targetY = d.y;
+                    followPlayer = false;
+                }
+            }
+
+            // Drehen und bewegen
+            const dx = targetX - d.x;
+            const dy = targetY - d.y;
+            const targetAngle = Math.atan2(dy, dx);
+            let da = targetAngle - d.angle;
+            while (da > Math.PI) da -= 2 * Math.PI;
+            while (da < -Math.PI) da += 2 * Math.PI;
+            d.angle += Math.sign(da) * Math.min(Math.abs(da), 0.05);
+
+            // Geschwindigkeit
+            if (d.ai.targetEnemy || followPlayer) {
+                if (Math.hypot(dx, dy) > 40) {
+                    d.vx += Math.cos(d.angle) * 0.09;
+                    d.vy += Math.sin(d.angle) * 0.09;
+                }
+            } else {
+                // Drohne bleibt stehen, wenn sie beim Spieler ist und kein Gegnerziel hat
+                d.vx *= 0.9;
+                d.vy *= 0.9;
+            }
+
+            // Schießen auf Gegner
+            if (d.ai.targetEnemy && !d.ai.shootCooldown && Math.hypot(dx, dy) < 400) {
+                shoot(d);
+                d.ai.shootCooldown = friendlyDroneFireRate;
+            }
+
+            // NEU: Schießen auf Asteroiden, wenn kein Gegnerziel und beim Spieler
+            if (!d.ai.targetEnemy && distToPlayer <= 80 && !d.ai.shootCooldown) {
+                // Suche nächsten Asteroiden im Umkreis
+                let closestAst = null;
+                let closestAstDist = Infinity;
+                asteroids.forEach(a => {
+                    const adx = a.x - d.x;
+                    const ady = a.y - d.y;
+                    const adist = Math.hypot(adx, ady);
+                    if (adist < 350 && adist < closestAstDist) {
+                        closestAst = a;
+                        closestAstDist = adist;
+                    }
+                });
+                if (closestAst) {
+                    // Drehe zur Asteroidenrichtung
+                    const astAngle = Math.atan2(closestAst.y - d.y, closestAst.x - d.x);
+                    let da = astAngle - d.angle;
+                    while (da > Math.PI) da -= 2 * Math.PI;
+                    while (da < -Math.PI) da += 2 * Math.PI;
+                    d.angle += Math.sign(da) * Math.min(Math.abs(da), 0.05);
+
+                    // Schießen, wenn ungefähr ausgerichtet
+                    if (Math.abs(da) < 0.3) {
+                        shoot(d);
+                        d.ai.shootCooldown = friendlyDroneFireRate;
+                    }
+                }
+            }
+
+            // Cooldown
+            if (d.ai.shootCooldown) d.ai.shootCooldown--;
+
+            // Bewegung und Begrenzung
+            d.x += d.vx;
+            d.y += d.vy;
+            d.vx *= 0.98;
+            d.vy *= 0.98;
+
+            // Begrenzung an den Wänden
+            let wallMargin = shipSize + 10;
+            if (d.x < wallMargin) d.x = wallMargin;
+            if (d.x > worldWidth - wallMargin) d.x = worldWidth - wallMargin;
+            if (d.y < wallMargin) d.y = wallMargin;
+            if (d.y > worldHeight - wallMargin) d.y = worldHeight - wallMargin;
+
+            if (d.shieldFlash > 0) d.shieldFlash--;
+        }
+
+        // Update und Draw Funktionen für Drohnen
+        function updateFriendlyDrones() {
+            friendlyDrones.forEach(updateFriendlyDroneAI);
+            friendlyDrones.forEach(updateBullets);
+        }
+
+        function drawFriendlyDrones(cam) {
+            friendlyDrones.forEach(d => {
+                drawPlayer(d, cam);
+            });
+            // Drohnen-Bullets
+            ctx.fillStyle = 'green';
+            friendlyDrones.forEach(d => {
+                d.bullets.forEach(b => ctx.fillRect(b.x - 2 - cam.x, b.y - 2 - cam.y, 4, 4));
+            });
+        }
+
+        // Drohnen-Bullets treffen Gegner
+        function checkFriendlyDroneBulletHits() {
+            friendlyDrones.forEach(d => {
+                d.bullets.forEach(bullet => {
+                    enemies.forEach(e => {
+                        if (!e.alive) return;
+                        const dist = Math.hypot(bullet.x - e.x, bullet.y - e.y);
+                        if (dist < shipSize) {
+                            // Damage
+                            let damage = bulletDamage;
+                            if (e.shield > 0) {
+                                const shieldDamage = Math.min(e.shield, damage);
+                                e.shield -= shieldDamage;
+                                damage -= shieldDamage;
+                            }
+                            if (damage > 0) {
+                                e.hp -= damage;
+                            }
+                            e.shieldFlash = shieldDuration;
+                            e.lastDamageTime = Date.now();
+                            bullet._hit = true;
+
+                            if (e.hp <= 0) {
+                                e.alive = false;
+                                setTimeout(() => {
+                                    Object.assign(e, respawn());
+                                    e.alive = true;
+                                }, 1500);
+                            }
+                        }
+                    });
+                });
+                // Remove hit bullets
+                d.bullets = d.bullets.filter(b => !b._hit);
+            });
+        }
+
+        // 8. Main game loop
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const now = Date.now();
+            // Shield regen for player
+            if (player.alive && player.shield < maxShield) {
+                if (now - player.lastDamageTime > 3000) {
+                    if (!player.shieldRegenTimer) player.shieldRegenTimer = now;
+                    if (now - player.shieldRegenTimer >= 100) {
+                        player.shield += 1;
+                        player.shield = Math.min(player.shield, maxShield);
+                        player.shieldRegenTimer += 100;
+                    }
+                } else {
+                    player.shieldRegenTimer = 0;
+                }
+            }
+
+            // --- ENEMY LOGIC ---
+            updateEnemies();
+            updateEnemyShieldRegen();
+
+            updatePlayer(player);
+            updateBullets(player);
+
+            updateAsteroids();
+            updateAsteroidHpBars();
+            checkBulletAsteroidCollisions();
+            checkAsteroidCollisions();
+
+            // --- ENEMY COLLISIONS ---
+            checkEnemyBulletHits();
+            checkPlayerBulletHits();
+
+            const cam = getCameraOffset();
+
+            drawWorldGrid(cam);
+            drawAsteroids(cam);
+            drawEnemies(cam); // Draw enemies
+            drawPlayer(player, cam);
+
+            // Draw player bullets
+            ctx.fillStyle = player.color;
+            player.bullets.forEach(b => ctx.fillRect(b.x - 2 - cam.x, b.y - 2 - cam.y, 4, 4));
+
+            // --- FRIENDLY DRONES ---
+            updateFriendlyDrones();
+            checkFriendlyDroneBulletHits();
+            drawFriendlyDrones(cam);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function shoot(p) {
+            const angle = p.angle;
+            const bullet = {
+                x: p.x + Math.cos(angle) * (shipSize + 10),
+                y: p.y + Math.sin(angle) * (shipSize + 10),
+                dx: Math.cos(angle) * bulletSpeed + p.vx,
+                dy: Math.sin(angle) * bulletSpeed + p.vy
+            };
+            p.bullets.push(bullet);
+        }
+
+        // Disable browser zoom with Ctrl + Mouse Wheel
+        window.addEventListener('wheel', function (e) {
+            if (e.ctrlKey) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        gameLoop();
+    </script>
+</body>
+
+</html>

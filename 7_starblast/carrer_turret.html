@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Carrier mit Turm</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: gray;
+            height: 100%;
+            width: 100%;
+        }
+
+        canvas {
+            background: black;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="game"></canvas>
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth, window.innerHeight);
+            canvas.width = size;
+            canvas.height = size;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const keys = {};
+        document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        let mouse = { x: 0, y: 0, down: false };
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+        canvas.addEventListener('mousedown', () => mouse.down = true);
+        canvas.addEventListener('mouseup', () => mouse.down = false);
+
+        const shipProps = {
+            size: 30,
+            speed: 0.05,
+            turnSpeed: 0.01,
+            bulletSpeed: 1,
+            turretBulletSpeed: 10
+        };
+
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            angle: 0,
+            vx: 0,
+            vy: 0,
+            color: 'orange',
+            alive: true,
+            controls: { up: 'w', left: 'a', right: 'd' },
+            bullets: [],
+            turretBullets: [],
+            turretCooldown: 0
+        };
+
+        function shootTurret(p) {
+            const angle = Math.atan2(mouse.y - p.y, mouse.x - p.x);
+            p.turretBullets.push({
+                x: p.x + Math.cos(angle) * 10,
+                y: p.y + Math.sin(angle) * 10,
+                dx: Math.cos(angle) * shipProps.turretBulletSpeed,
+                dy: Math.sin(angle) * shipProps.turretBulletSpeed
+            });
+        }
+
+        function updatePlayer(p) {
+            if (!p.alive) return;
+            if (keys[p.controls.left]) p.angle -= shipProps.turnSpeed;
+            if (keys[p.controls.right]) p.angle += shipProps.turnSpeed;
+            if (keys[p.controls.up]) {
+                p.vx += Math.cos(p.angle) * shipProps.speed;
+                p.vy += Math.sin(p.angle) * shipProps.speed;
+            }
+
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= 0.98;
+            p.vy *= 0.98;
+
+            if (p.x < 0) p.x = canvas.width;
+            if (p.x > canvas.width) p.x = 0;
+            if (p.y < 0) p.y = canvas.height;
+            if (p.y > canvas.height) p.y = 0;
+
+            if (mouse.down && p.turretCooldown <= 0) {
+                shootTurret(p);
+                p.turretCooldown = 10;
+            }
+
+            if (p.turretCooldown > 0) p.turretCooldown--;
+        }
+
+        function updateBullets(p) {
+            p.turretBullets.forEach(b => {
+                b.x += b.dx;
+                b.y += b.dy;
+            });
+            p.turretBullets = p.turretBullets.filter(b =>
+                b.x >= 0 && b.x <= canvas.width &&
+                b.y >= 0 && b.y <= canvas.height
+            );
+        }
+
+        function drawCarrier(p) {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.angle);
+            ctx.fillStyle = p.color;
+
+            // Hauptkörper
+            ctx.fillRect(-shipProps.size, -shipProps.size / 2, shipProps.size * 2, shipProps.size);
+
+            // Seitenflügel
+            ctx.beginPath();
+            ctx.moveTo(-shipProps.size * 1.2, -shipProps.size);
+            ctx.lineTo(-shipProps.size, -shipProps.size / 2);
+            ctx.lineTo(-shipProps.size * 1.2, -shipProps.size / 2);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(-shipProps.size * 1.2, shipProps.size);
+            ctx.lineTo(-shipProps.size, shipProps.size / 2);
+            ctx.lineTo(-shipProps.size * 1.2, shipProps.size / 2);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+
+            // Turm
+            drawTurret(p);
+        }
+
+        function drawTurret(p) {
+            const angle = Math.atan2(mouse.y - p.y, mouse.x - p.x);
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(angle);
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, -5, 20, 10); // Turmrohr
+            ctx.beginPath();
+            ctx.arc(0, 0, 8, 0, Math.PI * 2); // Turmbasis
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawBullets(p) {
+            ctx.fillStyle = 'yellow';
+            p.turretBullets.forEach(b => ctx.fillRect(b.x - 2, b.y - 2, 4, 4));
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            updatePlayer(player);
+            updateBullets(player);
+            drawCarrier(player);
+            drawBullets(player);
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+
+</html>
