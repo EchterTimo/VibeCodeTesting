@@ -112,6 +112,7 @@
                 this.turretAngle = 0;
                 this.bullets = [];
                 this.alive = true;
+                this.bulletCooldown = 0; // Add cooldown property
             }
 
             update(meteors) {
@@ -137,9 +138,15 @@
                 const turretDiff = ((angleTo(this, target) - this.turretAngle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
                 this.turretAngle += Math.sign(turretDiff) * Math.min(Math.abs(turretDiff), TURRET_ROTATION_SPEED);
 
+                // Bullet cooldown logic
+                if (this.bulletCooldown > 0) {
+                    this.bulletCooldown -= 1 / 60; // Assuming 60 FPS
+                }
+
                 // Shoot
-                if (Math.abs(turretDiff) < 0.1) {
+                if (Math.abs(turretDiff) < 0.1 && this.bulletCooldown <= 0) {
                     this.bullets.push(new Bullet(this.x, this.y, this.turretAngle));
+                    this.bulletCooldown = 0.3; // 0.3 seconds cooldown
                 }
 
                 // Update bullets and check collisions
