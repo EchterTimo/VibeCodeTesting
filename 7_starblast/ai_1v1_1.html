@@ -66,7 +66,7 @@
             draw() {
                 const size = this.radius;
 
-                // Draw ship
+                // Draw ship (45° arrow shape)
                 ctx.save();
                 ctx.translate(this.x, this.y);
                 ctx.rotate(this.angle);
@@ -79,19 +79,18 @@
                 ctx.fill();
                 ctx.restore();
 
-                // Draw HP bar above ship
+                // Draw health bar above
                 const barWidth = 40;
                 const barHeight = 6;
                 const hpRatio = Math.max(this.health / 100, 0);
-
                 const barX = this.x - barWidth / 2;
                 const barY = this.y - this.radius - 15;
 
-                // Background
+                // Background bar
                 ctx.fillStyle = 'gray';
                 ctx.fillRect(barX, barY, barWidth, barHeight);
 
-                // HP fill
+                // Health portion
                 ctx.fillStyle = 'lime';
                 ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
 
@@ -112,14 +111,20 @@
 
         function updateAI(ship, opponent) {
             const dist = distance(ship, opponent);
+            const retreatTrigger = 200 + Math.random() * 300;
 
-            if (dist < 100) {
+            if (dist < retreatTrigger) {
                 if (!ship.retreating) {
                     ship.retreating = true;
+                    const margin = 40;
+
                     ship.retreatTarget = {
-                        x: Math.random() * canvas.width,
-                        y: Math.random() * canvas.height
+                        x: Math.random() < 0.5 ? margin : canvas.width - margin,
+                        y: Math.random() < 0.5 ? margin : canvas.height - margin
                     };
+
+                    ship.retreatTarget.x += (Math.random() - 0.5) * 30;
+                    ship.retreatTarget.y += (Math.random() - 0.5) * 30;
                 }
 
                 const retreatAngle = Math.atan2(
@@ -135,6 +140,7 @@
 
             } else {
                 ship.retreating = false;
+
                 const targetAngle = Math.atan2(opponent.y - ship.y, opponent.x - ship.x);
                 const angleDiff = ((targetAngle - ship.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
                 ship.angle += angleDiff * 0.05;
@@ -157,6 +163,7 @@
             ship1.draw();
             ship2.draw();
 
+            // Blasters
             for (let i = blasters.length - 1; i >= 0; i--) {
                 const b = blasters[i];
                 b.x += b.dx;
