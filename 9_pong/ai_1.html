@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Ping Pong Clone</title>
+    <style>
+        canvas {
+            background: #000;
+            display: block;
+            margin: 0 auto;
+        }
+
+        body {
+            text-align: center;
+            font-family: sans-serif;
+            color: white;
+            background: #111;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Ping Pong Clone</h1>
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const paddleWidth = 10, paddleHeight = 100;
+        let paddle1Y = canvas.height / 2 - paddleHeight / 2;
+        let paddle2Y = canvas.height / 2 - paddleHeight / 2;
+        const paddleSpeed = 7;
+
+        let ballX = canvas.width / 2, ballY = canvas.height / 2;
+        let ballSpeedX = 5, ballSpeedY = 3;
+
+        let player1Score = 0, player2Score = 0;
+        const winningScore = 3;
+        let gameOver = false;
+
+        let keysPressed = {};
+
+        document.addEventListener('keydown', (e) => keysPressed[e.key] = true);
+        document.addEventListener('keyup', (e) => keysPressed[e.key] = false);
+
+        function resetBall() {
+            ballX = canvas.width / 2;
+            ballY = canvas.height / 2;
+            ballSpeedX = -ballSpeedX;
+            ballSpeedY = 3 + Math.random() * 4 * (Math.random() > 0.5 ? 1 : -1);
+        }
+
+        function drawEverything() {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, paddle1Y, paddleWidth, paddleHeight);
+            ctx.fillRect(canvas.width - paddleWidth, paddle2Y, paddleWidth, paddleHeight);
+
+            ctx.beginPath();
+            ctx.arc(ballX, ballY, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.font = '20px Arial';
+            ctx.fillText(`Player 1: ${player1Score}`, 100, 30);
+            ctx.fillText(`Player 2: ${player2Score}`, canvas.width - 200, 30);
+
+            if (gameOver) {
+                ctx.font = '40px Arial';
+                ctx.fillText(`${player1Score === winningScore ? 'Player 1' : 'Player 2'} Wins!`, canvas.width / 2 - 120, canvas.height / 2);
+            }
+        }
+
+        function moveEverything() {
+            if (gameOver) return;
+
+            if (keysPressed['w'] && paddle1Y > 0) paddle1Y -= paddleSpeed;
+            if (keysPressed['s'] && paddle1Y < canvas.height - paddleHeight) paddle1Y += paddleSpeed;
+
+            // AI movement for Player 2
+            let aiCenter = paddle2Y + paddleHeight / 2;
+            if (aiCenter < ballY - 35) {
+                paddle2Y += paddleSpeed * 0.75;
+            } else if (aiCenter > ballY + 35) {
+                paddle2Y -= paddleSpeed * 0.75;
+            }
+
+            if (paddle2Y < 0) paddle2Y = 0;
+            if (paddle2Y > canvas.height - paddleHeight) paddle2Y = canvas.height - paddleHeight;
+
+            ballX += ballSpeedX;
+            ballY += ballSpeedY;
+
+            if (ballY < 0 || ballY > canvas.height) ballSpeedY = -ballSpeedY;
+
+            const paddle1Top = paddle1Y;
+            const paddle1Bottom = paddle1Y + paddleHeight;
+            const paddle2Top = paddle2Y;
+            const paddle2Bottom = paddle2Y + paddleHeight;
+
+            // Left paddle
+            if (ballX < paddleWidth && ballY > paddle1Top && ballY < paddle1Bottom) {
+                ballSpeedX = -ballSpeedX;
+                ballSpeedY += (Math.random() - 0.5) * 4;
+            } else if (ballX < 0) {
+                player2Score++;
+                if (player2Score === winningScore) gameOver = true;
+                resetBall();
+            }
+
+            // Right paddle
+            if (ballX > canvas.width - paddleWidth && ballY > paddle2Top && ballY < paddle2Bottom) {
+                ballSpeedX = -ballSpeedX;
+                ballSpeedY += (Math.random() - 0.5) * 4;
+            } else if (ballX > canvas.width) {
+                player1Score++;
+                if (player1Score === winningScore) gameOver = true;
+                resetBall();
+            }
+        }
+
+        function gameLoop() {
+            moveEverything();
+            drawEverything();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+
+</html>
